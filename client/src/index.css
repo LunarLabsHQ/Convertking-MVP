@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-gradient-to-br from-black via-gray-950 to-black min-h-screen;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: relative;
+    overflow-x: hidden;
+    color: #ffffff;
+  }
+  
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+      radial-gradient(circle at 20% 50%, rgba(255, 193, 7, 0.03) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(255, 193, 7, 0.03) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .glass-effect {
+    @apply bg-black/50 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+
+  .hover-lift {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-2xl;
+  }
+  
+  .card-hover:hover {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  }
+
+  .text-gradient {
+    background: linear-gradient(to right, #FFD700, #FFA500);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .btn-primary {
+    background: linear-gradient(to right, #FFD700, #FFA500);
+    color: #000000;
+    font-weight: 700;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+  }
+  
+  .btn-primary:hover {
+    background: linear-gradient(to right, #FFA500, #FFD700);
+  }
+
+  .btn-outline {
+    @apply border-2 border-gray-700 transition-all duration-200;
+  }
+  
+  .btn-outline:hover {
+    border-color: #FFD700;
+    background-color: rgba(255, 215, 0, 0.1);
+  }
+}

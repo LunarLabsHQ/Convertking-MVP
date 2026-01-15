@@ -1,0 +1,5 @@
+uploads/
+converted/
+node_modules/
+.env
+*.log

@@ -1,0 +1,39 @@
+# ConvertKing - Video & Audio Converter
+# Robots.txt file
+
+# Allow all crawlers to access the site
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://convertking.com/sitemap.xml
+
+# Disallow access to API endpoints and file directories
+Disallow: /api/
+Disallow: /uploads/
+Disallow: /converted/
+
+# Disallow access to build assets that don't need indexing
+Disallow: /assets/
+Disallow: /*.json$
+
+# Allow access to all converter pages
+Allow: /video-to-mp4
+Allow: /video-to-gif
+Allow: /mov-to-mp4
+Allow: /audio-to-mp3
+Allow: /mp4-to-mp3
+Allow: /video-to-mp3
+
+# Crawl delay to be respectful to server resources
+Crawl-delay: 1
+
+# Specific rules for major search engines
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /

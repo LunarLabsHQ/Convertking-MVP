@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(choco --version:*)",
+      "Bash(choco install:*)",
+      "Bash(if [ -f \"C:\\\\ProgramData\\\\chocolatey\\\\lib\\\\c00565a56f0e64a50f2ea5badcb97694d43e0755\" ])",
+      "Bash(then rm \"C:\\\\ProgramData\\\\chocolatey\\\\lib\\\\c00565a56f0e64a50f2ea5badcb97694d43e0755\")",
+      "Bash(fi)",
+      "Bash(ffmpeg:*)",
+      "Bash(where.exe:*)",
+      "Bash(cmd.exe /c \"ffmpeg -version\")",
+      "Bash(powershell.exe -Command \"ffmpeg -version\")",
+      "Bash(powershell.exe -Command \"\\(Get-Command ffmpeg -ErrorAction SilentlyContinue\\).Source\")",
+      "Bash(npm run dev:*)",
+      "Bash(timeout 10 tail:*)",
+      "Bash(exit 0)",
+      "Bash(curl:*)",
+      "Bash(where:*)",
+      "Bash(ls:*)",
+      "Bash(unzip:*)",
+      "Bash(~/ffmpeg-temp/ffmpeg-8.0.1-essentials_build/bin/ffmpeg.exe:*)",
+      "Bash(export PATH=\"$HOME/ffmpeg-temp/ffmpeg-8.0.1-essentials_build/bin:$PATH\")",
+      "Bash(export PATH=\"/c/Users/shash/ffmpeg-temp/ffmpeg-8.0.1-essentials_build/bin:$PATH\")",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(ffprobe:*)"
+    ]
+  }
+}
