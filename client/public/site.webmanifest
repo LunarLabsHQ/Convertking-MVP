@@ -1,7 +1,7 @@
 {
-  "name": "ConvertKing MVP",
+  "name": "ConvertKing",
   "short_name": "ConvertKing",
-  "description": "Fast, reliable, and free video and audio conversion tools",
+  "description": "Fast, reliable, and free file conversion tools for videos, audio, images, and documents",
   "icons": [
     {
       "src": "/favicon-96x96.png",

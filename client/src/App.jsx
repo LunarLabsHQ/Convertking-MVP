@@ -3,6 +3,8 @@ import Header from './components/Header'
 import Hero from './components/Hero'
 import VideoConverters from './components/VideoConverters'
 import AudioConverters from './components/AudioConverters'
+import ImageConverters from './components/ImageConverters'
+import DocumentConverters from './components/DocumentConverters'
 import Footer from './components/Footer'
 
 function App() {
@@ -34,6 +36,8 @@ function App() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-10 md:gap-12 max-w-7xl mx-auto">
           <VideoConverters />
           <AudioConverters />
+          <ImageConverters />
+          <DocumentConverters />
         </div>
       </div>
       <Footer />

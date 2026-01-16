@@ -14,10 +14,10 @@ const Footer = () => {
           <Logo size="sm" />
         </div>
         <p className="text-gray-300 text-sm sm:text-base md:text-lg mb-2">
-          © 2024 ConvertKing MVP. All rights reserved.
+          © 2024 ConvertKing. All rights reserved.
         </p>
         <p className="text-gray-500 text-xs sm:text-sm md:text-base">
-          Fast, free, and secure media conversion
+          Fast, free, and secure file conversion for videos, audio, images, and documents
         </p>
       </div>
     </motion.footer>

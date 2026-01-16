@@ -1,4 +1,4 @@
-# ConvertKing - Video & Audio Converter
+# ConvertKing - File Converter
 # Robots.txt file
 
 # Allow all crawlers to access the site

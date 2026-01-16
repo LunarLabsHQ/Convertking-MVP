@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "fluent-ffmpeg": "^2.1.3"
   }
 }
