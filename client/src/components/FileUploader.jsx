@@ -6,6 +6,7 @@ const FileUploader = ({ converterId, type }) => {
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [converting, setConverting] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState(null)
   const [downloadFilename, setDownloadFilename] = useState(null)
   const [error, setError] = useState(null)
@@ -20,6 +21,8 @@ const FileUploader = ({ converterId, type }) => {
       setError(null)
       setDownloadUrl(null)
       setDownloadFilename(null)
+      setConverting(false)
+      setProgress(0)
     }
   }
 
@@ -31,6 +34,7 @@ const FileUploader = ({ converterId, type }) => {
 
     setUploading(true)
     setProgress(0)
+    setConverting(false)
     setError(null)
 
     const formData = new FormData()
@@ -50,6 +54,10 @@ const FileUploader = ({ converterId, type }) => {
               (progressEvent.loaded * 100) / progressEvent.total
             )
             setProgress(percentCompleted)
+            // When upload is complete, show converting status
+            if (percentCompleted === 100) {
+              setConverting(true)
+            }
           }
         },
       })
@@ -137,7 +145,17 @@ const FileUploader = ({ converterId, type }) => {
           ref={fileInputRef}
           type="file"
           onChange={handleFileSelect}
-          accept={type === 'video' ? 'video/*' : 'audio/*,video/*'}
+          accept={
+            type === 'video' 
+              ? 'video/*' 
+              : type === 'audio' 
+              ? 'audio/*,video/*' 
+              : type === 'image'
+              ? 'image/*,.pdf'
+              : type === 'document'
+              ? '.pdf,.doc,.docx,.epub,.mobi'
+              : '*/*'
+          }
           className="hidden"
           id={`file-input-${converterId}`}
         />
@@ -162,6 +180,8 @@ const FileUploader = ({ converterId, type }) => {
               setError(null)
               setDownloadUrl(null)
               setDownloadFilename(null)
+              setConverting(false)
+              setProgress(0)
             }
           }}
           className="glass-effect rounded-xl p-4 sm:p-6 md:p-8 cursor-pointer hover:bg-black/60 hover:border-yellow-500/30 transition-all text-center border-2 border-dashed border-gray-700 hover:border-yellow-500/50 block min-h-[160px] sm:min-h-[180px] md:min-h-[200px] flex items-center justify-center"
@@ -203,6 +223,8 @@ const FileUploader = ({ converterId, type }) => {
                 setError(null)
                 setDownloadUrl(null)
                 setDownloadFilename(null)
+                setConverting(false)
+                setProgress(0)
                 if (fileInputRef.current) {
                   fileInputRef.current.value = ''
                 }
@@ -230,18 +252,28 @@ const FileUploader = ({ converterId, type }) => {
             disabled={true}
             className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-black font-black py-3 sm:py-4 px-6 sm:px-8 rounded-xl opacity-50 cursor-not-allowed shadow-lg shadow-yellow-500/50 text-base sm:text-lg tracking-wide uppercase"
           >
-            Converting...
+            {converting ? 'Converting...' : `Uploading... ${progress}%`}
           </motion.button>
         )}
 
         {uploading && (
-          <div className="w-full bg-gray-800 rounded-full h-2.5 border border-gray-700">
-            <motion.div
-              className="bg-gradient-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full shadow-lg shadow-yellow-500/50"
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3 }}
-            />
+          <div className="w-full">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm text-gray-400">
+                {converting ? 'Converting file...' : 'Uploading...'}
+              </span>
+              <span className="text-sm font-bold text-yellow-500">
+                {converting ? '' : `${progress}%`}
+              </span>
+            </div>
+            <div className="w-full bg-gray-800 rounded-full h-2.5 border border-gray-700">
+              <motion.div
+                className="bg-gradient-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full shadow-lg shadow-yellow-500/50"
+                initial={{ width: 0 }}
+                animate={{ width: converting ? '100%' : `${progress}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
           </div>
         )}
 
@@ -288,6 +320,8 @@ const FileUploader = ({ converterId, type }) => {
                   setError(null)
                   setDownloadUrl(null)
                   setDownloadFilename(null)
+                  setConverting(false)
+                  setProgress(0)
                   if (fileInputRef.current) {
                     fileInputRef.current.value = ''
                   }
