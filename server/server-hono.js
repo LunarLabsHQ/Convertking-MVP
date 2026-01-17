@@ -1,6 +1,7 @@
-import express from 'express'
-import cors from 'cors'
-import multer from 'multer'
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
 import ffmpeg from 'fluent-ffmpeg'
 import path from 'path'
 import fs from 'fs'
@@ -16,21 +17,18 @@ import PDFParser from 'pdf2json'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const app = express()
+const app = new Hono()
 const PORT = process.env.PORT || 5000
 
-// Middleware
-app.use(cors())
-app.use(express.json())
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000',
+  process.env.FRONTEND_URL,
+].filter(Boolean)
 
-// Serve static files with proper headers for downloads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
-app.use('/converted', express.static(path.join(__dirname, 'converted'), {
-  setHeaders: (res, filePath) => {
-    // Set proper headers for file downloads
-    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`)
-    res.setHeader('Access-Control-Allow-Origin', '*')
-  }
+app.use('/*', cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : ['*'],
+  credentials: true
 }))
 
 // Ensure directories exist
@@ -44,47 +42,23 @@ if (!fs.existsSync(convertedDir)) {
   fs.mkdirSync(convertedDir, { recursive: true })
 }
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir)
+// Serve static files
+app.use('/uploads/*', serveStatic({ root: __dirname }))
+app.use('/converted/*', serveStatic({
+  root: __dirname,
+  onNotFound: (path, c) => {
+    return c.text('File not found', 404)
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, uniqueSuffix + path.extname(file.originalname))
-  }
-})
+  rewriteRequestPath: (path) => path
+}))
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 500 * 1024 * 1024 // 500MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    // Accept video, audio, image, and document files
-    const allowedMimes = [
-      'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
-      'video/webm', 'video/3gpp', 'video/x-flv', 'video/mpeg',
-      'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/aac',
-      'audio/flac', 'audio/webm',
-      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif',
-      'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/epub+zip', 'application/x-mobipocket-ebook',
-      'application/octet-stream'
-    ]
-
-    // Also check file extension as fallback
-    const allowedExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.mpeg', '.mpg',
-      '.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a', '.wma',
-      '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif',
-      '.pdf', '.doc', '.docx', '.epub', '.mobi']
-    const fileExtension = path.extname(file.originalname).toLowerCase()
-
-    if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
-      cb(null, true)
-    } else {
-      cb(new Error('Invalid file type. Please upload a video, audio, image, or document file.'))
-    }
+// Add custom headers for downloads
+app.use('/converted/*', async (c, next) => {
+  await next()
+  if (c.res.status === 200) {
+    const filename = path.basename(c.req.path)
+    c.res.headers.set('Content-Disposition', `attachment; filename="${filename}"`)
+    c.res.headers.set('Access-Control-Allow-Origin', '*')
   }
 })
 
@@ -154,7 +128,7 @@ const convertImage = async (inputPath, outputPath, conversionType) => {
         const image = sharp(inputPath)
         const metadata = await image.metadata()
         const pdfDoc = await PDFDocument.create()
-        
+
         let pdfImage
         // Handle different image formats
         if (metadata.format === 'png') {
@@ -165,7 +139,7 @@ const convertImage = async (inputPath, outputPath, conversionType) => {
           const imageBuffer = await image.jpeg({ quality: 90 }).toBuffer()
           pdfImage = await pdfDoc.embedJpg(imageBuffer)
         }
-        
+
         const page = pdfDoc.addPage([metadata.width || 800, metadata.height || 600])
         page.drawImage(pdfImage, {
           x: 0,
@@ -358,16 +332,79 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
   }
 }
 
+// Helper function to save uploaded file
+const saveUploadedFile = async (file) => {
+  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+  const ext = path.extname(file.name)
+  const filename = uniqueSuffix + ext
+  const filepath = path.join(uploadsDir, filename)
+
+  // Write file to disk
+  const buffer = await file.arrayBuffer()
+  fs.writeFileSync(filepath, Buffer.from(buffer))
+
+  return {
+    path: filepath,
+    filename: filename,
+    originalname: file.name,
+    size: file.size
+  }
+}
+
+// File type validation
+const isValidFileType = (filename, mimetype) => {
+  const allowedMimes = [
+    'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
+    'video/webm', 'video/3gpp', 'video/x-flv', 'video/mpeg',
+    'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/aac',
+    'audio/flac', 'audio/webm',
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif',
+    'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/epub+zip', 'application/x-mobipocket-ebook',
+    'application/octet-stream'
+  ]
+
+  const allowedExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.mpeg', '.mpg',
+    '.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a', '.wma',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif',
+    '.pdf', '.doc', '.docx', '.epub', '.mobi']
+
+  const fileExtension = path.extname(filename).toLowerCase()
+
+  return allowedMimes.includes(mimetype) || allowedExtensions.includes(fileExtension)
+}
+
 // Conversion endpoint
-app.post('/api/convert', upload.single('file'), async (req, res) => {
+app.post('/api/convert', async (c) => {
+  let uploadedFile = null
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' })
+    const body = await c.req.parseBody()
+    const file = body.file
+
+    if (!file || !(file instanceof File)) {
+      return c.json({ success: false, error: 'No file uploaded' }, 400)
     }
 
-    const { converterId, type } = req.body
-    const inputPath = req.file.path
-    const inputExt = path.extname(req.file.originalname).toLowerCase()
+    // Validate file size (500MB limit)
+    if (file.size > 500 * 1024 * 1024) {
+      return c.json({ success: false, error: 'File too large. Maximum size is 500MB.' }, 400)
+    }
+
+    // Validate file type
+    if (!isValidFileType(file.name, file.type)) {
+      return c.json({
+        success: false,
+        error: 'Invalid file type. Please upload a video, audio, image, or document file.'
+      }, 400)
+    }
+
+    // Save uploaded file
+    uploadedFile = await saveUploadedFile(file)
+
+    const { converterId, type } = body
+    const inputPath = uploadedFile.path
+    const inputExt = path.extname(uploadedFile.originalname).toLowerCase()
     const uniqueId = Date.now() + '-' + Math.round(Math.random() * 1E9)
 
     let outputPath
@@ -420,7 +457,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertImage(inputPath, outputPath, 'jpg-pdf')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -430,7 +467,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
         await convertImage(inputPath, outputPath, 'pdf-jpg')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -440,7 +477,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
         await convertImage(inputPath, outputPath, 'heic-jpg')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -450,7 +487,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertImage(inputPath, outputPath, 'image-pdf')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -466,7 +503,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
           await convertImage(inputPath, outputPath, 'image-pdf')
         }
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -477,7 +514,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.docx`)
         await convertDocument(inputPath, outputPath, 'pdf-word')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -487,7 +524,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertDocument(inputPath, outputPath, 'epub-pdf')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -497,7 +534,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}.mobi`)
         await convertDocument(inputPath, outputPath, 'epub-mobi')
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
@@ -509,14 +546,14 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         // For now, just copy the file
         fs.copyFileSync(inputPath, outputPath)
         fs.unlinkSync(inputPath)
-        return res.json({
+        return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
           filename: path.basename(outputPath)
         })
 
       default:
-        return res.status(400).json({ success: false, error: 'Invalid converter type' })
+        return c.json({ success: false, error: 'Invalid converter type' }, 400)
     }
 
     // Perform conversion for video/audio
@@ -530,7 +567,7 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
     const downloadUrl = `/converted/${path.basename(outputPath)}`
     console.log('Sending response:', { downloadUrl, filename: path.basename(outputPath) })
 
-    return res.json({
+    return c.json({
       success: true,
       downloadUrl: downloadUrl,
       filename: path.basename(outputPath)
@@ -538,11 +575,11 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     console.error('Conversion error:', error)
-    
+
     // Clean up files on error
-    if (req.file && fs.existsSync(req.file.path)) {
+    if (uploadedFile && fs.existsSync(uploadedFile.path)) {
       try {
-        fs.unlinkSync(req.file.path)
+        fs.unlinkSync(uploadedFile.path)
       } catch (unlinkError) {
         console.error('Error cleaning up input file:', unlinkError)
       }
@@ -556,20 +593,52 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
       errorMessage = error.message
     }
 
-    res.status(500).json({
+    return c.json({
       success: false,
       error: errorMessage
-    })
+    }, 500)
+  }
+})
+
+// Delete converted file endpoint
+app.delete('/api/converted/:filename', async (c) => {
+  try {
+    const filename = c.req.param('filename')
+    const filePath = path.join(convertedDir, filename)
+
+    // Validate filename to prevent path traversal
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+      return c.json({ success: false, error: 'Invalid filename' }, 400)
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return c.json({ success: false, error: 'File not found' }, 404)
+    }
+
+    // Delete the file
+    fs.unlinkSync(filePath)
+    console.log('Deleted converted file:', filename)
+
+    return c.json({ success: true, message: 'File deleted successfully' })
+  } catch (error) {
+    console.error('Error deleting file:', error)
+    return c.json({ success: false, error: 'Failed to delete file' }, 500)
   }
 })
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'ConvertKing API is running' })
+app.get('/api/health', (c) => {
+  return c.json({ status: 'ok', message: 'ConvertKing API is running' })
 })
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
+// Start server
+console.log(`🚀 Starting ConvertKing server with Hono...`)
+serve({
+  fetch: app.fetch,
+  port: PORT
+}, (info) => {
+  console.log(`🚀 Server running on http://localhost:${info.port}`)
   console.log(`📁 Uploads directory: ${uploadsDir}`)
   console.log(`📁 Converted directory: ${convertedDir}`)
 })

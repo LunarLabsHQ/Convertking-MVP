@@ -39,7 +39,11 @@
       "Bash(timeout 3 tail:*)",
       "Bash(timeout 2 tail:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix conversion hanging issue with improved progress feedback\n\nFixed bug where file conversions appeared to hang after upload completed:\n- Server now properly returns response after conversion completes\n- Added conversion progress logging for debugging\n- UI now distinguishes between upload and conversion phases\n- Progress bar shows \"Uploading...\" during upload and \"Converting...\" during processing\n\nThis ensures users get immediate feedback when their file conversion completes.\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix conversion hanging issue with improved progress feedback\n\nFixed bug where file conversions appeared to hang after upload completed:\n- Server now properly returns response after conversion completes\n- Added conversion progress logging for debugging\n- UI now distinguishes between upload and conversion phases\n- Progress bar shows \"Uploading...\" during upload and \"Converting...\" during processing\n\nThis ensures users get immediate feedback when their file conversion completes.\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git stash:*)",
+      "Bash(node server-hono.js:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)"
     ]
   }
 }

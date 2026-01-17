@@ -119,6 +119,17 @@ const FileUploader = ({ converterId, type }) => {
       setTimeout(() => {
         window.URL.revokeObjectURL(blobUrl)
       }, 100)
+
+      // Delete the converted file from server after download
+      if (downloadFilename) {
+        try {
+          await axios.delete(`http://localhost:5000/api/converted/${downloadFilename}`)
+          console.log('Converted file deleted from server:', downloadFilename)
+        } catch (deleteErr) {
+          console.error('Failed to delete file from server:', deleteErr)
+          // Don't show error to user as download was successful
+        }
+      }
     } catch (err) {
       console.error('Download error:', err)
       // Fallback: use direct link if blob download fails
@@ -133,6 +144,17 @@ const FileUploader = ({ converterId, type }) => {
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+
+      // Delete the converted file from server after download
+      if (downloadFilename) {
+        try {
+          await axios.delete(`http://localhost:5000/api/converted/${downloadFilename}`)
+          console.log('Converted file deleted from server:', downloadFilename)
+        } catch (deleteErr) {
+          console.error('Failed to delete file from server:', deleteErr)
+          // Don't show error to user as download was successful
+        }
+      }
     }
   }
 
