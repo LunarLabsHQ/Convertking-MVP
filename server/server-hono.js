@@ -23,11 +23,28 @@ const PORT = process.env.PORT || 5000
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:5173', // Vite default port
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175',
   process.env.FRONTEND_URL,
 ].filter(Boolean)
 
 app.use('/*', cors({
-  origin: allowedOrigins.length > 0 ? allowedOrigins : ['*'],
+  origin: (origin) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return '*'
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) return origin
+    // Allow all localhost origins for development
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return origin
+    }
+    return false
+  },
   credentials: true
 }))
 
