@@ -43,7 +43,9 @@
       "Bash(git stash:*)",
       "Bash(node server-hono.js:*)",
       "Bash(node -e:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(timeout /t 5)",
+      "Bash(ping:*)"
     ]
   }
 }

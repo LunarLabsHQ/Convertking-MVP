@@ -1,15 +1,15 @@
 import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import axios from 'axios'
+import { performConversion } from '../utils/conversionService'
 
 const FileUploader = ({ converterId, type }) => {
   const [file, setFile] = useState(null)
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [converting, setConverting] = useState(false)
-  const [downloadUrl, setDownloadUrl] = useState(null)
+  const [progress, setProgress] = useState(0)
+  const [convertedBlob, setConvertedBlob] = useState(null)
   const [downloadFilename, setDownloadFilename] = useState(null)
   const [error, setError] = useState(null)
+  const [loadingFFmpeg, setLoadingFFmpeg] = useState(false)
   const fileInputRef = useRef(null)
 
   const handleFileSelect = (e) => {
@@ -19,10 +19,11 @@ const FileUploader = ({ converterId, type }) => {
       console.log('File selected:', selectedFile.name)
       setFile(selectedFile)
       setError(null)
-      setDownloadUrl(null)
+      setConvertedBlob(null)
       setDownloadFilename(null)
       setConverting(false)
       setProgress(0)
+      setLoadingFFmpeg(false)
     }
   }
 
@@ -32,133 +33,105 @@ const FileUploader = ({ converterId, type }) => {
       return
     }
 
-    setUploading(true)
+    setConverting(true)
     setProgress(0)
-    setConverting(false)
     setError(null)
-
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('converterId', converterId)
-    formData.append('type', type)
+    setLoadingFFmpeg(true)
 
     try {
-      const response = await axios.post('/api/convert', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 300000, // 5 minutes timeout for large files
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            )
-            setProgress(percentCompleted)
-            // When upload is complete, show converting status
-            if (percentCompleted === 100) {
-              setConverting(true)
-            }
-          }
-        },
-      })
+      // Check if backend API is available
+      const apiUrl = import.meta.env.VITE_API_URL
 
-      if (response.data.success) {
-        setDownloadUrl(response.data.downloadUrl)
-        setDownloadFilename(response.data.filename || 'converted-file')
+      if (apiUrl) {
+        // Use backend API for conversion
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('converterId', converterId)
+        formData.append('type', type)
+
+        setLoadingFFmpeg(false)
+        setProgress(10)
+
+        const response = await fetch(`${apiUrl}/api/convert`, {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Conversion failed')
+        }
+
+        setProgress(50)
+
+        const result = await response.json()
+
+        if (!result.success) {
+          throw new Error(result.error || 'Conversion failed')
+        }
+
+        setProgress(75)
+
+        // Download the converted file from backend
+        const downloadResponse = await fetch(`${apiUrl}${result.downloadUrl}`)
+        const blob = await downloadResponse.blob()
+
+        setConvertedBlob(blob)
+        setDownloadFilename(result.filename)
         setProgress(100)
       } else {
-        setError(response.data.error || 'Conversion failed')
+        // Fallback to client-side conversion
+        const result = await performConversion(
+          file,
+          converterId,
+          type,
+          (progressValue) => {
+            setProgress(progressValue)
+            setLoadingFFmpeg(false)
+          }
+        )
+
+        setConvertedBlob(result.blob)
+        setDownloadFilename(result.filename)
+        setProgress(100)
       }
     } catch (err) {
       let errorMessage = 'An error occurred during conversion'
-      
-      if (err.response) {
-        // Server responded with error
-        errorMessage = err.response.data?.error || `Server error: ${err.response.status}`
-      } else if (err.request) {
-        // Request made but no response
-        errorMessage = 'No response from server. Please ensure the backend server is running on port 5000.'
-      } else {
-        // Error setting up request
-        errorMessage = err.message || errorMessage
+
+      if (err.message) {
+        errorMessage = err.message
       }
-      
+
       setError(errorMessage)
       console.error('Conversion error:', err)
     } finally {
-      setUploading(false)
+      setConverting(false)
+      setLoadingFFmpeg(false)
     }
   }
 
-  const handleDownload = async () => {
-    if (!downloadUrl) return
+  const handleDownload = () => {
+    if (!convertedBlob) return
 
-    try {
-      // Use full backend URL for download
-      const fullUrl = downloadUrl.startsWith('http')
-        ? downloadUrl
-        : `http://localhost:5000${downloadUrl}`
+    // Create a blob URL and trigger download
+    const blobUrl = window.URL.createObjectURL(convertedBlob)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = downloadFilename || 'converted-file'
+    link.style.display = 'none'
 
-      // Fetch the file as a blob
-      const response = await fetch(fullUrl)
-      const blob = await response.blob()
+    // Append to body, click, and remove
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
 
-      // Create a blob URL and trigger download
-      const blobUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = downloadFilename || 'converted-file'
-      link.style.display = 'none'
-
-      // Append to body, click, and remove
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      // Clean up the blob URL after a short delay
-      setTimeout(() => {
-        window.URL.revokeObjectURL(blobUrl)
-      }, 100)
-
-      // Delete the converted file from server after download
-      if (downloadFilename) {
-        try {
-          await axios.delete(`http://localhost:5000/api/converted/${downloadFilename}`)
-          console.log('Converted file deleted from server:', downloadFilename)
-        } catch (deleteErr) {
-          console.error('Failed to delete file from server:', deleteErr)
-          // Don't show error to user as download was successful
-        }
-      }
-    } catch (err) {
-      console.error('Download error:', err)
-      // Fallback: use direct link if blob download fails
-      const fullUrl = downloadUrl.startsWith('http')
-        ? downloadUrl
-        : `http://localhost:5000${downloadUrl}`
-
-      const link = document.createElement('a')
-      link.href = fullUrl
-      link.download = downloadFilename || 'converted-file'
-      link.style.display = 'none'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      // Delete the converted file from server after download
-      if (downloadFilename) {
-        try {
-          await axios.delete(`http://localhost:5000/api/converted/${downloadFilename}`)
-          console.log('Converted file deleted from server:', downloadFilename)
-        } catch (deleteErr) {
-          console.error('Failed to delete file from server:', deleteErr)
-          // Don't show error to user as download was successful
-        }
-      }
-    }
+    // Clean up the blob URL after a short delay
+    setTimeout(() => {
+      window.URL.revokeObjectURL(blobUrl)
+    }, 100)
   }
 
-  console.log('FileUploader render - file:', !!file, 'uploading:', uploading, 'downloadUrl:', !!downloadUrl)
+  console.log('FileUploader render - file:', !!file, 'converting:', converting, 'convertedBlob:', !!convertedBlob)
 
   return (
     <div className="mt-4 space-y-4" onClick={(e) => e.stopPropagation()}>
@@ -200,10 +173,11 @@ const FileUploader = ({ converterId, type }) => {
               console.log('File dropped:', droppedFile.name)
               setFile(droppedFile)
               setError(null)
-              setDownloadUrl(null)
+              setConvertedBlob(null)
               setDownloadFilename(null)
               setConverting(false)
               setProgress(0)
+              setLoadingFFmpeg(false)
             }
           }}
           className="glass-effect rounded-xl p-4 sm:p-6 md:p-8 cursor-pointer hover:bg-black/60 hover:border-yellow-500/30 transition-all text-center border-2 border-dashed border-gray-700 hover:border-yellow-500/50 block min-h-[160px] sm:min-h-[180px] md:min-h-[200px] flex items-center justify-center"
@@ -233,9 +207,8 @@ const FileUploader = ({ converterId, type }) => {
           </div>
         </label>
 
-        {file && !uploading && !downloadUrl && (
+        {file && !converting && !convertedBlob && (
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            {console.log('Buttons should show - file:', !!file, 'uploading:', uploading, 'downloadUrl:', !!downloadUrl)}
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -243,10 +216,11 @@ const FileUploader = ({ converterId, type }) => {
                 e.stopPropagation()
                 setFile(null)
                 setError(null)
-                setDownloadUrl(null)
+                setConvertedBlob(null)
                 setDownloadFilename(null)
                 setConverting(false)
                 setProgress(0)
+                setLoadingFFmpeg(false)
                 if (fileInputRef.current) {
                   fileInputRef.current.value = ''
                 }
@@ -268,31 +242,31 @@ const FileUploader = ({ converterId, type }) => {
             </motion.button>
           </div>
         )}
-        
-        {file && uploading && (
+
+        {file && converting && (
           <motion.button
             disabled={true}
             className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 text-black font-black py-3 sm:py-4 px-6 sm:px-8 rounded-xl opacity-50 cursor-not-allowed shadow-lg shadow-yellow-500/50 text-base sm:text-lg tracking-wide uppercase"
           >
-            {converting ? 'Converting...' : `Uploading... ${progress}%`}
+            {loadingFFmpeg ? 'Loading FFmpeg...' : 'Converting...'}
           </motion.button>
         )}
 
-        {uploading && (
+        {converting && (
           <div className="w-full">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-400">
-                {converting ? 'Converting file...' : 'Uploading...'}
+                {loadingFFmpeg ? 'Loading conversion engine...' : 'Converting file...'}
               </span>
               <span className="text-sm font-bold text-yellow-500">
-                {converting ? '' : `${progress}%`}
+                {loadingFFmpeg ? '' : `${progress}%`}
               </span>
             </div>
             <div className="w-full bg-gray-800 rounded-full h-2.5 border border-gray-700">
               <motion.div
                 className="bg-gradient-to-r from-yellow-500 to-yellow-600 h-2.5 rounded-full shadow-lg shadow-yellow-500/50"
                 initial={{ width: 0 }}
-                animate={{ width: converting ? '100%' : `${progress}%` }}
+                animate={{ width: loadingFFmpeg ? '100%' : `${progress}%` }}
                 transition={{ duration: 0.3 }}
               />
             </div>
@@ -309,7 +283,7 @@ const FileUploader = ({ converterId, type }) => {
           </motion.div>
         )}
 
-        {downloadUrl && (
+        {convertedBlob && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -320,6 +294,7 @@ const FileUploader = ({ converterId, type }) => {
               {downloadFilename && (
                 <p className="text-gray-400 text-xs break-words px-2">{downloadFilename}</p>
               )}
+              <p className="text-gray-500 text-xs mt-1">File converted locally in your browser</p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <motion.button
@@ -340,10 +315,11 @@ const FileUploader = ({ converterId, type }) => {
                   e.stopPropagation()
                   setFile(null)
                   setError(null)
-                  setDownloadUrl(null)
+                  setConvertedBlob(null)
                   setDownloadFilename(null)
                   setConverting(false)
                   setProgress(0)
+                  setLoadingFFmpeg(false)
                   if (fileInputRef.current) {
                     fileInputRef.current.value = ''
                   }

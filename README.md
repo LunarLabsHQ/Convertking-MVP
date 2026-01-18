@@ -1,35 +1,51 @@
 # ConvertKing MVP
 
-A modern, full-stack media conversion web application for converting video, audio, image, and document files.
+A modern, **100% client-side** media conversion web application. Convert video, audio, images, and documents **directly in your browser** - no uploads, no server, completely private!
+
+## 🚀 New: 100% Browser-Based Conversion!
+
+All conversions now happen **in your browser** using WebAssembly:
+- ✅ **No uploads** - Files never leave your device
+- ✅ **Completely private** - Zero data sent to servers
+- ✅ **Free hosting** - Deploy to Netlify for $0/month
+- ✅ **No backend** - Just static files
 
 ## Features
 
 **Video Converters:** MP4, GIF, MOV to MP4, General Video Converter
 **Audio Converters:** MP3, MP4 to MP3, Video to MP3, General Audio Converter
-**Image Converters:** PNG, JPG, WebP, and more
-**Document Converters:** PDF and various document formats
+**Image Converters:** JPG/PNG → PDF, PDF → JPG, HEIC → JPG
+**Document Converters:** PDF → Word, Images → PDF
 
 ## Tech Stack
 
 - **Frontend**: React + Vite + Tailwind CSS + Framer Motion
-- **Backend**: Node.js + Express
-- **File Processing**: FFmpeg + Sharp + pdf-lib
+- **Conversion Engine**: FFmpeg.wasm (WebAssembly)
+- **PDF Processing**: pdf-lib
+- **Image Processing**: Canvas API
 
 ## Quick Start
 
-**Prerequisites:** Node.js v18+ and FFmpeg
+**Prerequisites:** Node.js v18+ only (no FFmpeg needed!)
 
 ```bash
-# Install all dependencies
-npm run install:all
+# Install dependencies
+cd client
+npm install
 
-# Run the application
+# Run development server
 npm run dev
 ```
 
 Access the app at **http://localhost:3000**
 
-For detailed installation instructions, see [INSTALLATION.md](./INSTALLATION.md)
+**Deploy to Netlify** (2 minutes):
+```bash
+npm run build
+npx netlify-cli deploy --prod
+```
+
+See [DEPLOY-NETLIFY.md](./DEPLOY-NETLIFY.md) for detailed deployment instructions.
 
 ---
 
@@ -37,108 +53,126 @@ For detailed installation instructions, see [INSTALLATION.md](./INSTALLATION.md)
 
 ```
 convertking-mvp/
-├── client/               # React frontend (Vite + Tailwind)
-│   ├── public/          # Static assets, sitemap, robots.txt
-│   └── src/             # React components and styles
-├── server/              # Express backend + conversion APIs
-│   ├── server.js        # Main server file
-│   ├── uploads/         # Temporary file storage
-│   └── converted/       # Converted files
-└── package.json         # Root scripts
+├── client/                      # React frontend (ONLY FOLDER NEEDED!)
+│   ├── public/                 # Static assets, sitemap, robots.txt
+│   ├── src/
+│   │   ├── components/        # React components
+│   │   ├── utils/             # Conversion services
+│   │   │   ├── ffmpegService.js      # Video/audio (FFmpeg.wasm)
+│   │   │   ├── imageService.js       # Image processing
+│   │   │   ├── documentService.js    # PDF operations
+│   │   │   └── conversionService.js  # Main orchestrator
+│   │   └── App.jsx
+│   ├── netlify.toml           # Required headers for deployment
+│   └── package.json
+│
+├── server/                     # Legacy backend (NOT NEEDED ANYMORE)
+├── DEPLOY-NETLIFY.md          # Deployment guide
+└── README.md                  # This file
 ```
 
 ## Usage
 
-1. Start the application: `npm run dev`
+1. Start the app: `npm run dev` (from `client` folder)
 2. Open http://localhost:3000
 3. Select a converter (Video/Audio/Image/Document)
-4. Upload or drag-drop your file
-5. Click "Convert" and wait for processing
+4. **Drag and drop** or click to select your file
+5. Click "Convert" - conversion happens **in your browser**
 6. Download the converted file
 
 **Supported Formats:**
-- **Video**: MP4, MOV, AVI, MKV, WebM, 3GP, FLV → MP4, GIF
-- **Audio**: MP3, WAV, OGG, AAC, FLAC, MP4 (extract audio) → MP3
-- **Image**: PNG, JPG, WebP, GIF, TIFF, BMP → PNG, JPG, WebP
-- **Document**: PDF and various document formats
+- **Video**: MP4, MOV, AVI, MKV → MP4, GIF
+- **Audio**: Any video → MP3 (audio extraction)
+- **Image**: JPG, PNG, HEIC → PDF or JPG
+- **Document**: PDF → Word (RTF), Images → PDF
 
-**File Size Limit:** 500MB (configurable in server/server.js:53)
+**Recommended File Size:** < 100MB for best performance (browser memory limited)
 
 ---
 
-## API Endpoints
+## How It Works
 
-### `POST /api/convert`
-Converts uploaded media files.
+ConvertKing uses **FFmpeg.wasm** - a WebAssembly port of FFmpeg:
 
-**Request:** `multipart/form-data`
-- `file`: Media file to convert
-- `converterId`: Conversion type (mp4, gif, mp3, png, jpg, webp, pdf, etc.)
-- `type`: File category (video, audio, image, document)
+1. User selects a file (no upload!)
+2. File loads into browser memory
+3. FFmpeg.wasm processes it using user's CPU
+4. Converted file downloads automatically
+5. Everything cleans up from memory
 
-**Response:**
-```json
-{
-  "success": true,
-  "downloadUrl": "/converted/filename.ext",
-  "filename": "filename.ext"
-}
-```
-
-### `GET /api/health`
-Health check endpoint. Returns `{ "status": "ok", "message": "ConvertKing API is running" }`
+**Your files NEVER touch a server!**
 
 ---
 
 ## Development
 
-**Environment Variables** (create `server/.env`):
-```env
-PORT=5000
-MAX_FILE_SIZE=524288000
+**Start dev server:**
+```bash
+cd client
+npm run dev
 ```
 
-**Frontend**: Edit `client/src/` - hot reload enabled
-**Backend**: Edit `server/server.js` - auto-restart with `--watch` flag
+Hot reload is enabled - edit files in `client/src/`
+
+**Add new converter:**
+1. Add to converter config (e.g., `VideoConverters.jsx`)
+2. Add case to `conversionService.js`
+3. Implement in respective service file
 
 ## Production Deployment
 
+**Netlify (Recommended - Free!):**
 ```bash
-# Build frontend
-cd client && npm run build && cd ..
-
-# Start server
-cd server && npm start
+cd client
+npm run build
+npx netlify-cli deploy --prod
 ```
 
-**Requirements:**
-- FFmpeg installed on server
-- Node.js v18+
-- Write permissions for `uploads/` and `converted/` directories
-- Consider using Nginx as reverse proxy with SSL
+**Other hosts (Vercel, Cloudflare Pages, etc.):**
+1. Build command: `npm run build`
+2. Publish directory: `dist`
+3. **Important:** Add these headers (see `netlify.toml`):
+   - `Cross-Origin-Embedder-Policy: require-corp`
+   - `Cross-Origin-Opener-Policy: same-origin`
+
+These headers are **required** for SharedArrayBuffer (used by FFmpeg.wasm)
 
 ---
 
 ## Key Features
 
-- Modern UI with glassmorphism and smooth animations
-- Fully responsive design
-- Real-time progress tracking
-- Secure file handling with automatic cleanup
-- File validation on client and server
-- SEO-optimized (sitemap.xml, robots.txt)
+- 🎨 Modern UI with glassmorphism and smooth animations
+- 📱 Fully responsive design
+- 📊 Real-time progress tracking
+- 🔒 100% private - files never uploaded
+- ⚡ Client-side processing with WebAssembly
+- 🆓 Zero server costs
+- 🌐 SEO-optimized (sitemap.xml, robots.txt)
 
 ---
 
 ## Troubleshooting
 
-See [INSTALLATION.md](./INSTALLATION.md) for common issues and solutions.
+### "SharedArrayBuffer is not defined"
+Add required headers in `netlify.toml` (already included). Redeploy if needed.
 
-**Quick Checks:**
-- Verify FFmpeg: `ffmpeg -version`
-- Check server logs for detailed errors
-- Inspect browser console for frontend issues
-- Ensure all dependencies are installed: `npm run install:all`
+### Conversion is slow
+Normal! Browser conversions are slower than server-side:
+- Small files (< 10MB): 5-30 seconds
+- Medium files (10-50MB): 30-120 seconds
+- Large files (> 50MB): May timeout
+
+### Out of memory / Browser crash
+File is too large for browser. Recommend:
+- Use files < 100MB
+- Close other browser tabs
+- Use Chrome/Edge (better WebAssembly support)
+
+### Conversion fails
+- Check browser console for errors
+- Try smaller file
+- Ensure modern browser (Chrome/Edge/Firefox)
+- Some formats may not be supported client-side
 
 ---
 
