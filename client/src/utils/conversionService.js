@@ -10,6 +10,7 @@ import {
   convertEPUBToPDF,
   convertEPUBToMOBI
 } from './documentService'
+import JSZip from 'jszip'
 
 export const performConversion = async (file, converterId, type, onProgress) => {
   console.log('Starting conversion:', { file: file.name, converterId, type })
@@ -22,6 +23,7 @@ export const performConversion = async (file, converterId, type, onProgress) => 
       // Video conversions
       case 'mp4':
       case 'mov-mp4':
+      case 'mkv-mp4':
       case 'video-general':
         outputBlob = await convertVideo(file, 'mp4', {}, onProgress)
         outputFilename = `converted-${Date.now()}.mp4`
@@ -36,20 +38,40 @@ export const performConversion = async (file, converterId, type, onProgress) => 
       case 'mp3':
       case 'mp4-mp3':
       case 'video-mp3':
-      case 'audio-general':
+      case 'aac-mp3':
         outputBlob = await convertAudio(file, 'mp3', {}, onProgress)
         outputFilename = `converted-${Date.now()}.mp3`
         break
 
       // Image conversions
-      case 'jpg-pdf':
       case 'image-pdf':
         outputBlob = await convertImageToPDF(file)
         outputFilename = `converted-${Date.now()}.pdf`
         break
 
       case 'pdf-jpg':
-        outputBlob = await convertPDFToImage(file, 'jpeg')
+        // Convert all pages to images
+        const images = await convertPDFToImage(file, 'jpeg', onProgress)
+
+        // If only one page, return the single image
+        if (images.length === 1) {
+          outputBlob = images[0].blob
+          outputFilename = `converted-${Date.now()}.jpg`
+        } else {
+          // Create a zip file with all images
+          const zip = new JSZip()
+
+          images.forEach((img, index) => {
+            zip.file(img.filename, img.blob)
+          })
+
+          outputBlob = await zip.generateAsync({ type: 'blob' })
+          outputFilename = `converted-pages-${Date.now()}.zip`
+        }
+        break
+
+      case 'image-jpg':
+        outputBlob = await convertImageFormat(file, 'jpeg')
         outputFilename = `converted-${Date.now()}.jpg`
         break
 
@@ -82,7 +104,7 @@ export const performConversion = async (file, converterId, type, onProgress) => 
 
       case 'epub-mobi':
         outputBlob = await convertEPUBToMOBI(file)
-        outputFilename = `converted-${Date.now()}.mobi`
+        outputFilename = `converted-${Date.now()}.html`
         break
 
       case 'document-general':

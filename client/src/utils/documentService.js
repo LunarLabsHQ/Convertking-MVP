@@ -1,38 +1,203 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import * as pdfjsLib from 'pdfjs-dist'
+import ePub from 'epubjs'
+import { jsPDF } from 'jspdf'
 
 export const convertPDFToWord = async (file) => {
   // Note: True PDF to DOCX conversion requires complex parsing
-  // This creates a simple RTF (which Word can open) with extracted text
+  // This extracts text from PDF and creates an RTF file (which Word can open)
 
-  const arrayBuffer = await file.arrayBuffer()
-  const pdfDoc = await PDFDocument.load(arrayBuffer)
+  try {
+    const arrayBuffer = await file.arrayBuffer()
 
-  // Extract text from PDF pages
-  let extractedText = 'PDF Content:\n\n'
-  const pages = pdfDoc.getPages()
+    // Load PDF using PDF.js for text extraction
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+    const pdf = await loadingTask.promise
 
-  for (let i = 0; i < pages.length; i++) {
-    extractedText += `--- Page ${i + 1} ---\n\n`
-    extractedText += '[Text extraction from PDF requires additional libraries]\n\n'
-  }
+    let extractedText = ''
 
-  // Create RTF format (Word can open this)
-  const rtfContent = `{\\rtf1\\ansi\\deff0
+    // Extract text from each page
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum)
+      const textContent = await page.getTextContent()
+
+      // Combine text items from the page
+      const pageText = textContent.items
+        .map(item => item.str)
+        .join(' ')
+
+      extractedText += `--- Page ${pageNum} ---\n\n${pageText}\n\n`
+    }
+
+    if (!extractedText.trim()) {
+      extractedText = 'No text content could be extracted from this PDF.\nThe PDF may contain only images or scanned content.'
+    }
+
+    // Create RTF format (Word can open this)
+    // Escape special RTF characters
+    const escapedText = extractedText
+      .replace(/\\/g, '\\\\')
+      .replace(/\{/g, '\\{')
+      .replace(/\}/g, '\\}')
+      .replace(/\n/g, '\\par\n')
+
+    const rtfContent = `{\\rtf1\\ansi\\deff0
 {\\fonttbl{\\f0 Times New Roman;}}
+{\\colortbl;\\red0\\green0\\blue0;}
 \\f0\\fs24
-${extractedText.replace(/\n/g, '\\par\n')}
+${escapedText}
 }`
 
-  const blob = new Blob([rtfContent], { type: 'application/rtf' })
-  return blob
+    const blob = new Blob([rtfContent], { type: 'application/rtf' })
+    return blob
+  } catch (error) {
+    throw new Error(`PDF to Word conversion failed: ${error.message}`)
+  }
 }
 
 export const convertEPUBToPDF = async (file) => {
-  throw new Error('EPUB to PDF conversion is not available in browser. Please use an online converter or desktop software.')
+  try {
+    // Create ArrayBuffer from file
+    const arrayBuffer = await file.arrayBuffer()
+
+    // Initialize EPUB book
+    const book = ePub(arrayBuffer)
+    await book.ready
+
+    // Get spine items (chapters/sections in reading order)
+    const spine = await book.loaded.spine
+    const spineItems = spine.items
+
+    if (!spineItems || spineItems.length === 0) {
+      throw new Error('No content found in EPUB file')
+    }
+
+    // Create PDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4'
+    })
+
+    let isFirstPage = true
+
+    // Extract and add content from each chapter
+    for (const item of spineItems) {
+      try {
+        // Load chapter content
+        const doc = await book.load(item.href)
+        const content = doc.body || doc.documentElement
+
+        // Extract text content
+        let text = content.textContent || content.innerText || ''
+        text = text.trim()
+
+        if (!text) continue
+
+        // Add new page for each chapter (except first)
+        if (!isFirstPage) {
+          pdf.addPage()
+        }
+        isFirstPage = false
+
+        // Add chapter title if available
+        const title = item.label || `Chapter ${spineItems.indexOf(item) + 1}`
+        pdf.setFontSize(16)
+        pdf.setFont(undefined, 'bold')
+        pdf.text(title, 40, 40, { maxWidth: 515 })
+
+        // Add chapter content
+        pdf.setFontSize(12)
+        pdf.setFont(undefined, 'normal')
+
+        // Split text into lines and add to PDF
+        const lines = pdf.splitTextToSize(text, 515)
+        let yPosition = 70
+
+        for (const line of lines) {
+          if (yPosition > 800) {
+            pdf.addPage()
+            yPosition = 40
+          }
+          pdf.text(line, 40, yPosition)
+          yPosition += 15
+        }
+      } catch (chapterError) {
+        console.warn('Error loading chapter:', chapterError)
+        continue
+      }
+    }
+
+    // Generate PDF blob
+    const pdfBlob = pdf.output('blob')
+    return pdfBlob
+  } catch (error) {
+    throw new Error(`EPUB to PDF conversion failed: ${error.message}`)
+  }
 }
 
 export const convertEPUBToMOBI = async (file) => {
-  throw new Error('EPUB to MOBI conversion requires Calibre. Please use Calibre desktop software or an online converter.')
+  try {
+    // MOBI is Amazon's proprietary format and true conversion is complex
+    // As a workaround, we'll create a simplified text-based format
+    // that preserves the content structure
+
+    const arrayBuffer = await file.arrayBuffer()
+    const book = ePub(arrayBuffer)
+    await book.ready
+
+    const metadata = await book.loaded.metadata
+    const spine = await book.loaded.spine
+    const spineItems = spine.items
+
+    if (!spineItems || spineItems.length === 0) {
+      throw new Error('No content found in EPUB file')
+    }
+
+    // Build MOBI-like structure (simplified HTML format that Kindle can read)
+    let mobiContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>${metadata.title || 'Converted Book'}</title>
+<meta charset="UTF-8"/>
+</head>
+<body>
+<h1>${metadata.title || 'Converted Book'}</h1>
+${metadata.creator ? `<p><strong>Author:</strong> ${metadata.creator}</p>` : ''}
+<hr/>
+`
+
+    // Extract content from each chapter
+    for (const item of spineItems) {
+      try {
+        const doc = await book.load(item.href)
+        const content = doc.body || doc.documentElement
+
+        if (content) {
+          const title = item.label || `Chapter ${spineItems.indexOf(item) + 1}`
+          mobiContent += `\n<h2>${title}</h2>\n`
+          mobiContent += content.innerHTML || content.textContent || ''
+          mobiContent += '\n<hr/>\n'
+        }
+      } catch (chapterError) {
+        console.warn('Error loading chapter:', chapterError)
+        continue
+      }
+    }
+
+    mobiContent += `
+</body>
+</html>`
+
+    // Create blob as HTML (Kindle can read HTML files)
+    // Note: True .mobi requires Amazon's proprietary tools
+    // This creates an HTML file that Kindle devices/apps can read
+    const blob = new Blob([mobiContent], { type: 'text/html' })
+    return blob
+  } catch (error) {
+    throw new Error(`EPUB to MOBI conversion failed: ${error.message}`)
+  }
 }
 
 export const convertTextToPDF = async (text, options = {}) => {

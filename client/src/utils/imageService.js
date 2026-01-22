@@ -1,115 +1,129 @@
 import { PDFDocument } from 'pdf-lib'
+import * as pdfjsLib from 'pdfjs-dist'
+import heic2any from 'heic2any'
 
-export const convertImageToPDF = async (file) => {
+// Set up PDF.js worker - use local worker file from public directory
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
+export const convertImageToPDF = async (files) => {
+  // Support both single file and array of files
+  const fileArray = Array.isArray(files) ? files : [files]
+
   const pdfDoc = await PDFDocument.create()
 
-  // Read the image file
-  const imageBytes = await file.arrayBuffer()
+  for (const file of fileArray) {
+    // Read the image file
+    const imageBytes = await file.arrayBuffer()
 
-  // Embed the image based on its type
-  let image
-  if (file.type === 'image/png') {
-    image = await pdfDoc.embedPng(imageBytes)
-  } else if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
-    image = await pdfDoc.embedJpg(imageBytes)
-  } else {
-    // For other formats, convert to PNG using Canvas first
-    const imageDataUrl = await fileToDataURL(file)
-    const pngBytes = await convertToPNG(imageDataUrl)
-    image = await pdfDoc.embedPng(pngBytes)
+    // Embed the image based on its type
+    let image
+    if (file.type === 'image/png') {
+      image = await pdfDoc.embedPng(imageBytes)
+    } else if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+      image = await pdfDoc.embedJpg(imageBytes)
+    } else {
+      // For other formats, convert to PNG using Canvas first
+      const imageDataUrl = await fileToDataURL(file)
+      const pngBytes = await convertToPNG(imageDataUrl)
+      image = await pdfDoc.embedPng(pngBytes)
+    }
+
+    // Create a page with the same dimensions as the image
+    const { width, height } = image.scale(1)
+    const page = pdfDoc.addPage([width, height])
+
+    // Draw the image
+    page.drawImage(image, {
+      x: 0,
+      y: 0,
+      width: width,
+      height: height,
+    })
   }
-
-  // Create a page with the same dimensions as the image
-  const { width, height } = image.scale(1)
-  const page = pdfDoc.addPage([width, height])
-
-  // Draw the image
-  page.drawImage(image, {
-    x: 0,
-    y: 0,
-    width: width,
-    height: height,
-  })
 
   // Serialize the PDF
   const pdfBytes = await pdfDoc.save()
   return new Blob([pdfBytes], { type: 'application/pdf' })
 }
 
-export const convertPDFToImage = async (file, format = 'jpeg') => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      // Read PDF
-      const arrayBuffer = await file.arrayBuffer()
-      const pdfDoc = await PDFDocument.load(arrayBuffer)
+export const convertPDFToImage = async (file, format = 'jpeg', onProgress) => {
+  try {
+    // Read PDF
+    const arrayBuffer = await file.arrayBuffer()
 
-      // Get first page
-      const pages = pdfDoc.getPages()
-      if (pages.length === 0) {
-        throw new Error('PDF has no pages')
+    // Load PDF using PDF.js
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+    const pdf = await loadingTask.promise
+
+    const numPages = pdf.numPages
+    const images = []
+
+    // Convert each page to an image
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum)
+
+      // Set scale for better quality
+      const scale = 2.0
+      const viewport = page.getViewport({ scale })
+
+      // Prepare canvas
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+
+      // Render PDF page to canvas
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport
       }
 
-      const firstPage = pages[0]
-      const { width, height } = firstPage.getSize()
+      await page.render(renderContext).promise
 
-      // Create a new PDF with just the first page
-      const singlePagePdf = await PDFDocument.create()
-      const [copiedPage] = await singlePagePdf.copyPages(pdfDoc, [0])
-      singlePagePdf.addPage(copiedPage)
-      const pdfBytes = await singlePagePdf.save()
-
-      // Convert PDF to data URL
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-
-      // Render PDF to canvas using iframe trick
-      const iframe = document.createElement('iframe')
-      iframe.style.display = 'none'
-      iframe.src = url
-      document.body.appendChild(iframe)
-
-      iframe.onload = async () => {
-        try {
-          // Use canvas to render
-          const canvas = document.createElement('canvas')
-          const scale = 2 // Higher quality
-          canvas.width = width * scale
-          canvas.height = height * scale
-
-          const ctx = canvas.getContext('2d')
-          ctx.fillStyle = 'white'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-          // Convert canvas to blob
-          canvas.toBlob((blob) => {
-            document.body.removeChild(iframe)
-            URL.revokeObjectURL(url)
+      // Convert canvas to blob
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
             resolve(blob)
-          }, `image/${format}`, 0.95)
-        } catch (error) {
-          document.body.removeChild(iframe)
-          URL.revokeObjectURL(url)
-          reject(error)
-        }
-      }
+          } else {
+            reject(new Error('Failed to convert PDF page to image'))
+          }
+        }, `image/${format}`, 0.95)
+      })
 
-      // Timeout fallback
-      setTimeout(() => {
-        document.body.removeChild(iframe)
-        URL.revokeObjectURL(url)
-        reject(new Error('PDF to image conversion timeout'))
-      }, 10000)
-    } catch (error) {
-      reject(error)
+      images.push({
+        blob,
+        filename: `page-${pageNum}.${format === 'jpeg' ? 'jpg' : format}`
+      })
+
+      // Report progress
+      if (onProgress) {
+        const progress = Math.round((pageNum / numPages) * 100)
+        onProgress(progress)
+      }
     }
-  })
+
+    return images
+  } catch (error) {
+    throw new Error(`PDF to image conversion failed: ${error.message}`)
+  }
 }
 
 export const convertHEICToJPEG = async (file) => {
-  // HEIC conversion requires a library like heic2any
-  // For now, we'll use the browser's image decode capabilities
-  const imageDataUrl = await fileToDataURL(file)
-  return await convertToJPEG(imageDataUrl)
+  try {
+    // Use heic2any library to convert HEIC to JPEG
+    const convertedBlob = await heic2any({
+      blob: file,
+      toType: 'image/jpeg',
+      quality: 0.95
+    })
+
+    // heic2any might return an array of blobs for multi-image HEIC files
+    // We'll take the first one
+    return Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob
+  } catch (error) {
+    throw new Error(`HEIC to JPEG conversion failed: ${error.message}`)
+  }
 }
 
 export const convertImageFormat = async (file, targetFormat) => {

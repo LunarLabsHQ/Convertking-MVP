@@ -6,10 +6,10 @@ const ImageConverters = () => {
   const [activeConverter, setActiveConverter] = useState(null)
 
   const converters = [
-    { id: 'jpg-pdf', title: 'JPG to PDF', description: 'Convert JPG images to PDF format' },
-    { id: 'pdf-jpg', title: 'PDF to JPG', description: 'Extract images from PDF to JPG' },
+    { id: 'image-pdf', title: 'Image to PDF', description: 'Convert any image to PDF format (supports multiple images)' },
+    { id: 'pdf-jpg', title: 'PDF to JPG', description: 'Convert all PDF pages to JPG images (downloads as zip)' },
     { id: 'heic-jpg', title: 'HEIC to JPG', description: 'Convert HEIC images to JPG format' },
-    { id: 'image-pdf', title: 'Image to PDF', description: 'Convert any image to PDF format' },
+    { id: 'image-jpg', title: 'Image to JPG', description: 'Convert any image format to JPG' },
   ]
 
   return (
@@ -47,19 +47,6 @@ const ImageConverters = () => {
           />
         </motion.div>
       ))}
-      
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-      >
-        <ConverterCard
-          converter={{ id: 'image-general', title: 'Image Converter', description: 'General image conversion tool' }}
-          type="image"
-          isActive={activeConverter === 'image-general'}
-          onClick={() => setActiveConverter(activeConverter === 'image-general' ? null : 'image-general')}
-        />
-      </motion.div>
     </motion.div>
   )
 }

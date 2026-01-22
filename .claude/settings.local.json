@@ -45,7 +45,12 @@
       "Bash(node -e:*)",
       "Bash(node:*)",
       "Bash(timeout /t 5)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(npm run build:*)",
+      "Bash(sudo apt-get update:*)",
+      "Bash(sudo apt-get install:*)"
     ]
   }
 }

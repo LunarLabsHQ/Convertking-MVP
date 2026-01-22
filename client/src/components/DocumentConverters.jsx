@@ -6,9 +6,9 @@ const DocumentConverters = () => {
   const [activeConverter, setActiveConverter] = useState(null)
 
   const converters = [
-    { id: 'pdf-word', title: 'PDF to WORD', description: 'Convert PDF documents to Word format' },
+    { id: 'pdf-word', title: 'PDF to Word', description: 'Extract text from PDF to Word format (RTF)' },
     { id: 'epub-pdf', title: 'EPUB to PDF', description: 'Convert EPUB ebooks to PDF format' },
-    { id: 'epub-mobi', title: 'EPUB to MOBI', description: 'Convert EPUB ebooks to MOBI format' },
+    { id: 'epub-mobi', title: 'EPUB to MOBI', description: 'Convert EPUB ebooks to MOBI/HTML format' },
   ]
 
   return (
@@ -46,19 +46,6 @@ const DocumentConverters = () => {
           />
         </motion.div>
       ))}
-      
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-      >
-        <ConverterCard
-          converter={{ id: 'document-general', title: 'Document Converter', description: 'General document conversion tool' }}
-          type="document"
-          isActive={activeConverter === 'document-general'}
-          onClick={() => setActiveConverter(activeConverter === 'document-general' ? null : 'document-general')}
-        />
-      </motion.div>
     </motion.div>
   )
 }

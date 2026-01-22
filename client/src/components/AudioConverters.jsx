@@ -6,7 +6,8 @@ const AudioConverters = () => {
   const [activeConverter, setActiveConverter] = useState(null)
 
   const converters = [
-    { id: 'mp3', title: 'MP3 Converter', description: 'Convert any audio to MP3 format' },
+    { id: 'mp3', title: 'Audio to MP3', description: 'Convert any audio to MP3 format' },
+    { id: 'aac-mp3', title: 'AAC to MP3', description: 'Convert AAC audio files to MP3 format' },
     { id: 'mp4-mp3', title: 'MP4 to MP3', description: 'Extract audio from MP4 videos' },
     { id: 'video-mp3', title: 'Video to MP3', description: 'Convert video files to MP3 audio' },
   ]
@@ -46,19 +47,6 @@ const AudioConverters = () => {
           />
         </motion.div>
       ))}
-      
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-      >
-        <ConverterCard
-          converter={{ id: 'audio-general', title: 'Audio Converter', description: 'General audio conversion tool' }}
-          type="audio"
-          isActive={activeConverter === 'audio-general'}
-          onClick={() => setActiveConverter(activeConverter === 'audio-general' ? null : 'audio-general')}
-        />
-      </motion.div>
     </motion.div>
   )
 }

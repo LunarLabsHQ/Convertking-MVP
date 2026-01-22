@@ -63,7 +63,15 @@ export const convertVideo = async (file, outputFormat, options = {}, onProgress)
 
   switch (outputFormat) {
     case 'mp4':
-      args.push('-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart')
+      args.push(
+        '-c:v', 'libx264',           // H.264 video codec
+        '-preset', 'medium',          // Encoding speed/quality balance
+        '-crf', '23',                 // Quality (lower = better, 18-28 recommended)
+        '-c:a', 'aac',                // AAC audio codec
+        '-b:a', '128k',               // Audio bitrate
+        '-movflags', '+faststart',    // Enable streaming
+        '-max_muxing_queue_size', '1024' // Prevent muxing errors
+      )
       break
     case 'gif':
       args.push('-vf', 'fps=10,scale=800:-1:flags=lanczos', '-c:v', 'gif')

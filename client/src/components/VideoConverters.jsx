@@ -6,9 +6,10 @@ const VideoConverters = () => {
   const [activeConverter, setActiveConverter] = useState(null)
 
   const converters = [
-    { id: 'mp4', title: 'MP4 Converter', description: 'Convert any video to MP4 format' },
-    { id: 'gif', title: 'Video to GIF', description: 'Transform videos into animated GIFs' },
+    { id: 'mp4', title: 'Video to MP4', description: 'Convert any video to MP4 format' },
+    { id: 'mkv-mp4', title: 'MKV to MP4', description: 'Convert MKV files to MP4 format' },
     { id: 'mov-mp4', title: 'MOV to MP4', description: 'Convert MOV files to MP4 format' },
+    { id: 'gif', title: 'Video to GIF', description: 'Transform videos into animated GIFs' },
   ]
 
   return (
@@ -46,19 +47,6 @@ const VideoConverters = () => {
           />
         </motion.div>
       ))}
-      
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
-      >
-        <ConverterCard
-          converter={{ id: 'video-general', title: 'Video Converter', description: 'General video conversion tool' }}
-          type="video"
-          isActive={activeConverter === 'video-general'}
-          onClick={() => setActiveConverter(activeConverter === 'video-general' ? null : 'video-general')}
-        />
-      </motion.div>
     </motion.div>
   )
 }
