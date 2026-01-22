@@ -54,7 +54,10 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(pkill:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(lsof:*)",
+      "Bash(ss:*)",
+      "Bash(kill:*)"
     ]
   }
 }

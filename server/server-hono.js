@@ -16,6 +16,7 @@ import PDFParser from 'pdf2json'
 import archiver from 'archiver'
 import { Canvas, Image } from 'canvas'
 import { pdfToPng } from 'pdf-to-png-converter'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -367,7 +368,7 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
   try {
     switch (conversionType) {
       case 'pdf-word': {
-        // PDF to Word conversion using pdf2json to extract text
+        // PDF to Word conversion using pdf2json to extract text and docx library
         return new Promise((resolve, reject) => {
           const pdfParser = new PDFParser()
 
@@ -375,22 +376,101 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
             reject(new Error('Failed to parse PDF: ' + errData.parserError))
           })
 
-          pdfParser.on('pdfParser_dataReady', pdfData => {
+          pdfParser.on('pdfParser_dataReady', async pdfData => {
             try {
-              // Extract text from PDF
-              let text = ''
-              pdfData.Pages.forEach(page => {
-                page.Texts.forEach(textItem => {
-                  textItem.R.forEach(r => {
-                    text += decodeURIComponent(r.T) + ' '
+              const documentChildren = []
+
+              // Extract text from each page
+              pdfData.Pages.forEach((page, pageIndex) => {
+                // Add page heading
+                documentChildren.push(
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `Page ${pageIndex + 1}`,
+                        bold: true,
+                        size: 28,
+                      })
+                    ],
+                    heading: HeadingLevel.HEADING_2,
+                    spacing: {
+                      before: 240,
+                      after: 120,
+                    }
                   })
-                  text += '\n'
+                )
+
+                // Extract text from page
+                const lines = []
+                let currentLine = ''
+                let lastY = null
+
+                page.Texts.forEach(textItem => {
+                  const y = textItem.y
+                  const text = textItem.R.map(r => decodeURIComponent(r.T)).join('')
+
+                  // Check if we've moved to a new line
+                  if (lastY !== null && Math.abs(y - lastY) > 0.5) {
+                    if (currentLine.trim()) {
+                      lines.push(currentLine.trim())
+                    }
+                    currentLine = ''
+                  }
+
+                  if (currentLine && text.trim() && !currentLine.endsWith(' ')) {
+                    currentLine += ' '
+                  }
+                  currentLine += text
+                  lastY = y
                 })
+
+                // Add last line
+                if (currentLine.trim()) {
+                  lines.push(currentLine.trim())
+                }
+
+                // Add lines as paragraphs
+                if (lines.length === 0) {
+                  documentChildren.push(
+                    new Paragraph({
+                      children: [
+                        new TextRun({
+                          text: '[No text content on this page]',
+                          italics: true,
+                        })
+                      ]
+                    })
+                  )
+                } else {
+                  lines.forEach(line => {
+                    documentChildren.push(
+                      new Paragraph({
+                        children: [
+                          new TextRun({
+                            text: line,
+                            size: 24,
+                          })
+                        ],
+                        spacing: {
+                          after: 120,
+                        }
+                      })
+                    )
+                  })
+                }
               })
 
-              // Create a basic Word document (actually RTF format which Word can open)
-              const rtfContent = `{\\rtf1\\ansi\\deff0\n{\\fonttbl{\\f0 Times New Roman;}}\n\\f0\\fs24\n${text.replace(/\n/g, '\\par\n')}\n}`
-              fs.writeFileSync(outputPath, rtfContent)
+              // Create Word document
+              const doc = new Document({
+                sections: [{
+                  properties: {},
+                  children: documentChildren,
+                }],
+              })
+
+              // Generate DOCX file
+              const buffer = await Packer.toBuffer(doc)
+              fs.writeFileSync(outputPath, buffer)
               resolve(outputPath)
             } catch (error) {
               reject(new Error('Failed to create Word document: ' + error.message))

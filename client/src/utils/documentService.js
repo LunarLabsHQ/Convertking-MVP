@@ -123,11 +123,12 @@ export const convertPDFToWord = async (file) => {
       }],
     })
 
-    // Generate DOCX file using toBuffer for reliable output
-    const buffer = await Packer.toBuffer(doc)
+    // Generate DOCX file using toBlob for browser compatibility
+    const blob = await Packer.toBlob(doc)
 
-    // Create blob with correct MIME type for DOCX
-    const docxBlob = new Blob([buffer], {
+    // Ensure correct MIME type for DOCX (re-create blob with proper type)
+    const docxBuffer = await blob.arrayBuffer()
+    const docxBlob = new Blob([docxBuffer], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     })
     return docxBlob
