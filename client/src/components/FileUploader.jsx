@@ -11,6 +11,7 @@ const FileUploader = ({ converterId, type }) => {
   const [downloadFilename, setDownloadFilename] = useState(null)
   const [error, setError] = useState(null)
   const [loadingFFmpeg, setLoadingFFmpeg] = useState(false)
+  const [usedClientSide, setUsedClientSide] = useState(false)
   const fileInputRef = useRef(null)
 
   // Converters that support multiple files
@@ -32,6 +33,7 @@ const FileUploader = ({ converterId, type }) => {
         setConverting(false)
         setProgress(0)
         setLoadingFFmpeg(false)
+        setUsedClientSide(false)
       }
     } else {
       const selectedFile = e.target.files[0]
@@ -45,6 +47,7 @@ const FileUploader = ({ converterId, type }) => {
         setConverting(false)
         setProgress(0)
         setLoadingFFmpeg(false)
+        setUsedClientSide(false)
       }
     }
   }
@@ -65,7 +68,27 @@ const FileUploader = ({ converterId, type }) => {
       // Check if backend API is available
       const apiUrl = import.meta.env.VITE_API_URL
 
-      if (apiUrl) {
+      // Always use client-side conversion for HEIC files (server lacks codec support)
+      const useClientSide = converterId === 'heic-jpg' || !apiUrl
+
+      if (useClientSide) {
+        // Use client-side conversion
+        const fileToConvert = supportsMultiple ? files : file
+        const result = await performConversion(
+          fileToConvert,
+          converterId,
+          type,
+          (progressValue) => {
+            setProgress(progressValue)
+            setLoadingFFmpeg(false)
+          }
+        )
+
+        setConvertedBlob(result.blob)
+        setDownloadFilename(result.filename)
+        setUsedClientSide(true)
+        setProgress(100)
+      } else {
         // Use backend API for conversion
         const formData = new FormData()
 
@@ -107,22 +130,7 @@ const FileUploader = ({ converterId, type }) => {
 
         setConvertedBlob(blob)
         setDownloadFilename(result.filename)
-        setProgress(100)
-      } else {
-        // Fallback to client-side conversion
-        const fileToConvert = supportsMultiple ? files : file
-        const result = await performConversion(
-          fileToConvert,
-          converterId,
-          type,
-          (progressValue) => {
-            setProgress(progressValue)
-            setLoadingFFmpeg(false)
-          }
-        )
-
-        setConvertedBlob(result.blob)
-        setDownloadFilename(result.filename)
+        setUsedClientSide(false)
         setProgress(100)
       }
     } catch (err) {
@@ -212,6 +220,7 @@ const FileUploader = ({ converterId, type }) => {
                 setConverting(false)
                 setProgress(0)
                 setLoadingFFmpeg(false)
+                setUsedClientSide(false)
               }
             } else {
               const droppedFile = e.dataTransfer.files[0]
@@ -225,6 +234,7 @@ const FileUploader = ({ converterId, type }) => {
                 setConverting(false)
                 setProgress(0)
                 setLoadingFFmpeg(false)
+                setUsedClientSide(false)
               }
             }
           }}
@@ -292,6 +302,7 @@ const FileUploader = ({ converterId, type }) => {
                 setConverting(false)
                 setProgress(0)
                 setLoadingFFmpeg(false)
+                setUsedClientSide(false)
                 if (fileInputRef.current) {
                   fileInputRef.current.value = ''
                 }
@@ -365,7 +376,9 @@ const FileUploader = ({ converterId, type }) => {
               {downloadFilename && (
                 <p className="text-gray-400 text-xs break-words px-2">{downloadFilename}</p>
               )}
-              <p className="text-gray-500 text-xs mt-1">File converted locally in your browser</p>
+              <p className="text-gray-500 text-xs mt-1">
+                {usedClientSide ? 'File converted locally in your browser' : 'File converted successfully'}
+              </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <motion.button
@@ -392,6 +405,7 @@ const FileUploader = ({ converterId, type }) => {
                   setConverting(false)
                   setProgress(0)
                   setLoadingFFmpeg(false)
+                  setUsedClientSide(false)
                   if (fileInputRef.current) {
                     fileInputRef.current.value = ''
                   }
