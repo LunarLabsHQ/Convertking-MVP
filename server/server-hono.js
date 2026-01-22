@@ -144,6 +144,12 @@ const convertImage = async (inputPaths, outputPath, conversionType) => {
 
         // Process each image
         for (const inputPath of pathArray) {
+          // Check if file is actually a PDF
+          const ext = path.extname(inputPath).toLowerCase()
+          if (ext === '.pdf') {
+            throw new Error('Cannot convert PDF to PDF. Please use the "PDF to JPG" converter for PDF files.')
+          }
+
           const image = sharp(inputPath)
           const metadata = await image.metadata()
 
