@@ -127,29 +127,53 @@ export const convertHEICToJPEG = async (file) => {
 }
 
 export const convertImageFormat = async (file, targetFormat) => {
-  const imageDataUrl = await fileToDataURL(file)
+  try {
+    // Check if file is HEIC/HEIF - convert to JPEG first using heic2any
+    const isHeic = file.name.toLowerCase().endsWith('.heic') ||
+                   file.name.toLowerCase().endsWith('.heif') ||
+                   file.type === 'image/heic' ||
+                   file.type === 'image/heif'
 
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
+    let fileToConvert = file
 
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, 0, 0)
-
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(blob)
-        } else {
-          reject(new Error('Failed to convert image'))
-        }
-      }, `image/${targetFormat}`, 0.95)
+    if (isHeic) {
+      console.log('Converting HEIC file first using heic2any')
+      fileToConvert = await convertHEICToJPEG(file)
     }
-    img.onerror = reject
-    img.src = imageDataUrl
-  })
+
+    const imageDataUrl = await fileToDataURL(fileToConvert)
+
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.width
+        canvas.height = img.height
+
+        const ctx = canvas.getContext('2d')
+
+        // Fill with white background for JPEG (to handle transparency)
+        if (targetFormat === 'jpeg') {
+          ctx.fillStyle = 'white'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+        }
+
+        ctx.drawImage(img, 0, 0)
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('Failed to convert image'))
+          }
+        }, `image/${targetFormat}`, 0.95)
+      }
+      img.onerror = reject
+      img.src = imageDataUrl
+    })
+  } catch (error) {
+    throw new Error(`Image format conversion failed: ${error.message}`)
+  }
 }
 
 // Helper functions

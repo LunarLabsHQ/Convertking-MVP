@@ -68,8 +68,19 @@ const FileUploader = ({ converterId, type }) => {
       // Check if backend API is available
       const apiUrl = import.meta.env.VITE_API_URL
 
+      // Check if file is HEIC/HEIF format
+      const fileToCheck = supportsMultiple ? (files.length > 0 ? files[0] : null) : file
+      const isHeic = fileToCheck &&
+        (fileToCheck.name.toLowerCase().endsWith('.heic') ||
+         fileToCheck.name.toLowerCase().endsWith('.heif') ||
+         fileToCheck.type === 'image/heic' ||
+         fileToCheck.type === 'image/heif')
+
       // Always use client-side conversion for HEIC files (server lacks codec support)
-      const useClientSide = converterId === 'heic-jpg' || !apiUrl
+      // or when there's no API, or for the heic-jpg converter
+      const useClientSide = converterId === 'heic-jpg' ||
+                            (converterId === 'image-jpg' && isHeic) ||
+                            !apiUrl
 
       if (useClientSide) {
         // Use client-side conversion

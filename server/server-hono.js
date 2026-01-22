@@ -279,9 +279,45 @@ const convertImage = async (inputPaths, outputPath, conversionType) => {
         // Convert HEIC to JPG
         // Use first path from array
         const heicPath = pathArray[0]
-        await sharp(heicPath)
-          .jpeg({ quality: 90 })
-          .toFile(outputPath)
+        console.log('[HEIC-JPG] Converting:', heicPath, 'to', outputPath)
+
+        try {
+          const image = sharp(heicPath)
+          const metadata = await image.metadata()
+          console.log('[HEIC-JPG] Image metadata:', metadata)
+
+          await image
+            .jpeg({ quality: 90, mozjpeg: true })
+            .toFile(outputPath)
+
+          console.log('[HEIC-JPG] Conversion successful')
+        } catch (err) {
+          console.error('[HEIC-JPG] Conversion error:', err)
+          throw new Error(`Failed to convert HEIC to JPG: ${err.message}`)
+        }
+        break
+      }
+      case 'image-jpg': {
+        // Convert any image format to JPG
+        const imagePath = pathArray[0]
+        console.log('[IMAGE-JPG] Converting:', imagePath, 'to', outputPath)
+
+        try {
+          const image = sharp(imagePath)
+          const metadata = await image.metadata()
+          console.log('[IMAGE-JPG] Image metadata:', metadata)
+
+          // Convert to JPG with white background for images with transparency
+          await image
+            .flatten({ background: { r: 255, g: 255, b: 255 } })
+            .jpeg({ quality: 90, mozjpeg: true })
+            .toFile(outputPath)
+
+          console.log('[IMAGE-JPG] Conversion successful')
+        } catch (err) {
+          console.error('[IMAGE-JPG] Conversion error:', err)
+          throw new Error(`Failed to convert image to JPG: ${err.message}`)
+        }
         break
       }
       default:
@@ -628,6 +664,16 @@ app.post('/api/convert', async (c) => {
       case 'heic-jpg':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
         await convertImage(inputPath, outputPath, 'heic-jpg')
+        cleanupFiles(uploadedFiles)
+        return c.json({
+          success: true,
+          downloadUrl: `/converted/${path.basename(outputPath)}`,
+          filename: path.basename(outputPath)
+        })
+
+      case 'image-jpg':
+        outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
+        await convertImage(inputPath, outputPath, 'image-jpg')
         cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
