@@ -76,9 +76,10 @@ const FileUploader = ({ converterId, type }) => {
          fileToCheck.type === 'image/heic' ||
          fileToCheck.type === 'image/heif')
 
-      // Always use client-side conversion for HEIC files (server lacks codec support)
-      // or when there's no API, or for the heic-jpg converter
+      // Always use client-side conversion for HEIC files (server lacks codec support),
+      // PDF to Word (docx library works better client-side), or when there's no API
       const useClientSide = converterId === 'heic-jpg' ||
+                            converterId === 'pdf-word' ||
                             (converterId === 'image-jpg' && isHeic) ||
                             !apiUrl
 

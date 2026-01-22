@@ -123,9 +123,14 @@ export const convertPDFToWord = async (file) => {
       }],
     })
 
-    // Generate DOCX file
-    const blob = await Packer.toBlob(doc)
-    return blob
+    // Generate DOCX file using toBuffer for reliable output
+    const buffer = await Packer.toBuffer(doc)
+
+    // Create blob with correct MIME type for DOCX
+    const docxBlob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    })
+    return docxBlob
   } catch (error) {
     throw new Error(`PDF to Word conversion failed: ${error.message}`)
   }
