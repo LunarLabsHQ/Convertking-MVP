@@ -329,6 +329,39 @@ const convertImage = async (inputPaths, outputPath, conversionType) => {
   }
 }
 
+// Helper function to sanitize text for WinAnsi encoding (removes Unicode characters)
+const sanitizeTextForPDF = (text) => {
+  // WinAnsi supports characters from 32-126 and 160-255
+  // Replace unsupported characters with closest ASCII equivalent or space
+  return text
+    .split('')
+    .map(char => {
+      const code = char.charCodeAt(0)
+      // Keep ASCII printable characters (32-126)
+      if (code >= 32 && code <= 126) return char
+      // Keep extended ASCII (160-255)
+      if (code >= 160 && code <= 255) return char
+      // Replace common Unicode punctuation with ASCII equivalents
+      const replacements = {
+        '\u2018': "'", // Left single quote
+        '\u2019': "'", // Right single quote
+        '\u201C': '"', // Left double quote
+        '\u201D': '"', // Right double quote
+        '\u2013': '-', // En dash
+        '\u2014': '-', // Em dash
+        '\u2026': '...', // Ellipsis
+        '\u300E': '"', // Japanese left quote
+        '\u300F': '"', // Japanese right quote
+        '\u3001': ',', // Japanese comma
+        '\u3002': '.', // Japanese period
+      }
+      if (replacements[char]) return replacements[char]
+      // Replace other unsupported characters with space
+      return ' '
+    })
+    .join('')
+}
+
 // Conversion function for documents
 const convertDocument = async (inputPath, outputPath, conversionType) => {
   try {
@@ -370,17 +403,21 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
 
       case 'epub-pdf': {
         // EPUB to PDF conversion
+        console.log('[EPUB-PDF] Starting conversion for:', inputPath)
         return new Promise((resolve, reject) => {
           const epub = new EPub(inputPath)
 
           epub.on('error', (err) => {
+            console.error('[EPUB-PDF] Failed to parse EPUB:', err)
             reject(new Error('Failed to parse EPUB: ' + err.message))
           })
 
           epub.on('end', async () => {
             try {
+              console.log('[EPUB-PDF] EPUB parsed successfully')
               const pdfDoc = await PDFDocument.create()
               const chapters = epub.flow.map(chapter => chapter.id)
+              console.log(`[EPUB-PDF] Found ${chapters.length} chapters`)
 
               let fullText = ''
 
@@ -394,15 +431,20 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
                       } else {
                         // Strip HTML tags
                         const dom = new JSDOM(text)
-                        res(dom.window.document.body.textContent || '')
+                        const rawText = dom.window.document.body.textContent || ''
+                        // Sanitize text to remove unsupported Unicode characters
+                        const sanitized = sanitizeTextForPDF(rawText)
+                        res(sanitized)
                       }
                     })
                   })
                   fullText += chapterText + '\n\n'
                 } catch (err) {
-                  console.warn('Failed to extract chapter:', chapterId, err)
+                  console.warn('[EPUB-PDF] Failed to extract chapter:', chapterId, err)
                 }
               }
+
+              console.log(`[EPUB-PDF] Extracted ${fullText.length} characters of text`)
 
               // Create PDF pages with text
               const page = pdfDoc.addPage()
@@ -430,6 +472,7 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
               // Add lines to pages
               let currentPage = page
               let y = height - margin
+              let linesDrawn = 0
 
               for (const line of lines) {
                 if (y < margin + fontSize) {
@@ -437,20 +480,160 @@ const convertDocument = async (inputPath, outputPath, conversionType) => {
                   y = height - margin
                 }
 
-                currentPage.drawText(line.substring(0, 100), {
-                  x: margin,
-                  y: y,
-                  size: fontSize,
-                  color: rgb(0, 0, 0)
-                })
+                try {
+                  // Limit line length and sanitize one more time
+                  const cleanLine = sanitizeTextForPDF(line.substring(0, 100))
+                  if (cleanLine.trim()) {
+                    currentPage.drawText(cleanLine, {
+                      x: margin,
+                      y: y,
+                      size: fontSize,
+                      color: rgb(0, 0, 0)
+                    })
+                    linesDrawn++
+                  }
+                } catch (err) {
+                  console.warn('[EPUB-PDF] Failed to draw line:', err.message)
+                  // Continue with next line
+                }
                 y -= fontSize * 1.5
               }
 
+              console.log(`[EPUB-PDF] Drew ${linesDrawn} lines across ${pdfDoc.getPageCount()} pages`)
+
               const pdfBytes = await pdfDoc.save()
               fs.writeFileSync(outputPath, pdfBytes)
+              console.log('[EPUB-PDF] PDF saved successfully to:', outputPath)
               resolve(outputPath)
             } catch (error) {
+              console.error('[EPUB-PDF] Failed to create PDF:', error)
               reject(new Error('Failed to create PDF: ' + error.message))
+            }
+          })
+
+          epub.parse()
+        })
+      }
+
+      case 'epub-html': {
+        // EPUB to HTML conversion
+        console.log('[EPUB-HTML] Starting conversion for:', inputPath)
+        return new Promise((resolve, reject) => {
+          const epub = new EPub(inputPath)
+
+          epub.on('error', (err) => {
+            console.error('[EPUB-HTML] Failed to parse EPUB:', err)
+            reject(new Error('Failed to parse EPUB: ' + err.message))
+          })
+
+          epub.on('end', async () => {
+            try {
+              console.log('[EPUB-HTML] EPUB parsed successfully')
+              const chapters = epub.flow.map(chapter => chapter.id)
+              console.log(`[EPUB-HTML] Found ${chapters.length} chapters`)
+
+              // Build HTML structure with proper styling
+              let htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${epub.metadata.title || 'Converted Book'}</title>
+  <style>
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #fff;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 3px solid #3498db;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      color: #34495e;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #ecf0f1;
+      padding-bottom: 5px;
+    }
+    .metadata {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 30px;
+      border-left: 4px solid #3498db;
+    }
+    .metadata p {
+      margin: 5px 0;
+    }
+    .chapter {
+      margin-bottom: 40px;
+    }
+    hr {
+      border: none;
+      border-top: 2px solid #ecf0f1;
+      margin: 30px 0;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 20px auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>${epub.metadata.title || 'Converted Book'}</h1>
+  <div class="metadata">
+    ${epub.metadata.creator ? `<p><strong>Author:</strong> ${epub.metadata.creator}</p>` : ''}
+    ${epub.metadata.publisher ? `<p><strong>Publisher:</strong> ${epub.metadata.publisher}</p>` : ''}
+    ${epub.metadata.date ? `<p><strong>Date:</strong> ${epub.metadata.date}</p>` : ''}
+    ${epub.metadata.description ? `<p><strong>Description:</strong> ${epub.metadata.description}</p>` : ''}
+  </div>
+`
+
+              // Extract content from each chapter
+              for (const chapterId of chapters) {
+                try {
+                  const chapterText = await new Promise((res, rej) => {
+                    epub.getChapter(chapterId, (error, text) => {
+                      if (error) {
+                        rej(error)
+                      } else {
+                        res(text)
+                      }
+                    })
+                  })
+
+                  // Parse HTML and extract content
+                  const dom = new JSDOM(chapterText)
+                  const chapterTitle = epub.flow.find(ch => ch.id === chapterId)?.title || `Chapter ${chapters.indexOf(chapterId) + 1}`
+                  const chapterContent = dom.window.document.body.innerHTML || dom.window.document.body.textContent || ''
+
+                  htmlContent += `\n  <div class="chapter">\n    <h2>${chapterTitle}</h2>\n`
+                  htmlContent += chapterContent
+                  htmlContent += '\n  </div>\n'
+                } catch (err) {
+                  console.warn('[EPUB-HTML] Failed to extract chapter:', chapterId, err)
+                }
+              }
+
+              htmlContent += `
+</body>
+</html>`
+
+              fs.writeFileSync(outputPath, htmlContent, 'utf-8')
+              console.log('[EPUB-HTML] HTML saved successfully to:', outputPath)
+              resolve(outputPath)
+            } catch (error) {
+              console.error('[EPUB-HTML] Failed to create HTML:', error)
+              reject(new Error('Failed to create HTML: ' + error.message))
             }
           })
 
@@ -721,6 +904,16 @@ app.post('/api/convert', async (c) => {
       case 'epub-pdf':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertDocument(inputPath, outputPath, 'epub-pdf')
+        cleanupFiles(uploadedFiles)
+        return c.json({
+          success: true,
+          downloadUrl: `/converted/${path.basename(outputPath)}`,
+          filename: path.basename(outputPath)
+        })
+
+      case 'epub-html':
+        outputPath = path.join(convertedDir, `converted-${uniqueId}.html`)
+        await convertDocument(inputPath, outputPath, 'epub-html')
         cleanupFiles(uploadedFiles)
         return c.json({
           success: true,

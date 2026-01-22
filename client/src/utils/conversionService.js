@@ -8,6 +8,7 @@ import {
 import {
   convertPDFToWord,
   convertEPUBToPDF,
+  convertEPUBToHTML,
   convertEPUBToMOBI
 } from './documentService'
 import JSZip from 'jszip'
@@ -100,6 +101,11 @@ export const performConversion = async (file, converterId, type, onProgress) => 
       case 'epub-pdf':
         outputBlob = await convertEPUBToPDF(file)
         outputFilename = `converted-${Date.now()}.pdf`
+        break
+
+      case 'epub-html':
+        outputBlob = await convertEPUBToHTML(file)
+        outputFilename = `converted-${Date.now()}.html`
         break
 
       case 'epub-mobi':

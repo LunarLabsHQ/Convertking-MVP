@@ -136,6 +136,120 @@ export const convertEPUBToPDF = async (file) => {
   }
 }
 
+export const convertEPUBToHTML = async (file) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const book = ePub(arrayBuffer)
+    await book.ready
+
+    const metadata = await book.loaded.metadata
+    const spine = await book.loaded.spine
+    const spineItems = spine.items
+
+    if (!spineItems || spineItems.length === 0) {
+      throw new Error('No content found in EPUB file')
+    }
+
+    // Build HTML structure with proper styling
+    let htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${metadata.title || 'Converted Book'}</title>
+  <style>
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #fff;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+      border-bottom: 3px solid #3498db;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      color: #34495e;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #ecf0f1;
+      padding-bottom: 5px;
+    }
+    .metadata {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 30px;
+      border-left: 4px solid #3498db;
+    }
+    .metadata p {
+      margin: 5px 0;
+    }
+    .chapter {
+      margin-bottom: 40px;
+    }
+    hr {
+      border: none;
+      border-top: 2px solid #ecf0f1;
+      margin: 30px 0;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 20px auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>${metadata.title || 'Converted Book'}</h1>
+  <div class="metadata">
+    ${metadata.creator ? `<p><strong>Author:</strong> ${metadata.creator}</p>` : ''}
+    ${metadata.publisher ? `<p><strong>Publisher:</strong> ${metadata.publisher}</p>` : ''}
+    ${metadata.date ? `<p><strong>Date:</strong> ${metadata.date}</p>` : ''}
+    ${metadata.description ? `<p><strong>Description:</strong> ${metadata.description}</p>` : ''}
+  </div>
+`
+
+    // Extract content from each chapter
+    for (const item of spineItems) {
+      try {
+        const doc = await book.load(item.href)
+        const content = doc.body || doc.documentElement
+
+        if (content) {
+          const title = item.label || `Chapter ${spineItems.indexOf(item) + 1}`
+          htmlContent += `\n  <div class="chapter">\n    <h2>${title}</h2>\n`
+          
+          // Get innerHTML to preserve formatting and images
+          const chapterContent = content.innerHTML || content.textContent || ''
+          htmlContent += chapterContent
+          
+          htmlContent += '\n  </div>\n'
+        }
+      } catch (chapterError) {
+        console.warn('Error loading chapter:', chapterError)
+        continue
+      }
+    }
+
+    htmlContent += `
+</body>
+</html>`
+
+    // Create blob as HTML
+    const blob = new Blob([htmlContent], { type: 'text/html' })
+    return blob
+  } catch (error) {
+    throw new Error(`EPUB to HTML conversion failed: ${error.message}`)
+  }
+}
+
 export const convertEPUBToMOBI = async (file) => {
   try {
     // MOBI is Amazon's proprietary format and true conversion is complex
