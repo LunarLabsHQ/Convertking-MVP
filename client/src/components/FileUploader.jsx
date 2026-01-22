@@ -177,7 +177,7 @@ const FileUploader = ({ converterId, type }) => {
               : type === 'audio'
               ? 'audio/*,video/*'
               : type === 'image'
-              ? 'image/*,.pdf'
+              ? 'image/*,.pdf,.heic,.heif'
               : type === 'document'
               ? '.pdf,.doc,.docx,.epub,.mobi'
               : '*/*'
