@@ -882,6 +882,11 @@ app.post('/api/convert', async (c) => {
         options = { format: 'mp3', audioCodec: 'libmp3lame', audioBitrate: '192k', noVideo: true }
         break
 
+      case 'aac-mp3':
+        outputPath = path.join(convertedDir, `converted-${uniqueId}.mp3`)
+        options = { format: 'mp3', audioCodec: 'libmp3lame', audioBitrate: '192k', noVideo: true }
+        break
+
       case 'mp4-mp3':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.mp3`)
         options = { format: 'mp3', audioCodec: 'libmp3lame', audioBitrate: '192k', noVideo: true }
