@@ -128,42 +128,52 @@ const convertFile = (inputPath, outputPath, options) => {
   })
 }
 
-// Conversion function for images
-const convertImage = async (inputPath, outputPath, conversionType) => {
+// Conversion function for images (supports multiple images for PDF conversion)
+const convertImage = async (inputPaths, outputPath, conversionType) => {
   try {
+    // Support both single path and array of paths
+    const pathArray = Array.isArray(inputPaths) ? inputPaths : [inputPaths]
+
     switch (conversionType) {
       case 'jpg-pdf':
       case 'image-pdf': {
-        // Convert image to PDF
-        const image = sharp(inputPath)
-        const metadata = await image.metadata()
+        // Convert image(s) to PDF
         const pdfDoc = await PDFDocument.create()
 
-        let pdfImage
-        // Handle different image formats
-        if (metadata.format === 'png') {
-          const imageBuffer = await image.png().toBuffer()
-          pdfImage = await pdfDoc.embedPng(imageBuffer)
-        } else {
-          // Convert to JPEG for other formats
-          const imageBuffer = await image.jpeg({ quality: 90 }).toBuffer()
-          pdfImage = await pdfDoc.embedJpg(imageBuffer)
+        // Process each image
+        for (const inputPath of pathArray) {
+          const image = sharp(inputPath)
+          const metadata = await image.metadata()
+
+          let pdfImage
+          // Handle different image formats
+          if (metadata.format === 'png') {
+            const imageBuffer = await image.png().toBuffer()
+            pdfImage = await pdfDoc.embedPng(imageBuffer)
+          } else {
+            // Convert to JPEG for other formats
+            const imageBuffer = await image.jpeg({ quality: 90 }).toBuffer()
+            pdfImage = await pdfDoc.embedJpg(imageBuffer)
+          }
+
+          const page = pdfDoc.addPage([metadata.width || 800, metadata.height || 600])
+          page.drawImage(pdfImage, {
+            x: 0,
+            y: 0,
+            width: metadata.width || 800,
+            height: metadata.height || 600,
+          })
         }
 
-        const page = pdfDoc.addPage([metadata.width || 800, metadata.height || 600])
-        page.drawImage(pdfImage, {
-          x: 0,
-          y: 0,
-          width: metadata.width || 800,
-          height: metadata.height || 600,
-        })
         const pdfBytes = await pdfDoc.save()
         fs.writeFileSync(outputPath, pdfBytes)
         break
       }
       case 'pdf-jpg': {
         // Extract first page of PDF as JPG using pdf.js
-        const data = new Uint8Array(fs.readFileSync(inputPath))
+        // Use first path from array
+        const pdfPath = pathArray[0]
+        const data = new Uint8Array(fs.readFileSync(pdfPath))
         const loadingTask = pdfjsLib.getDocument({ data })
         const pdfDocument = await loadingTask.promise
         const page = await pdfDocument.getPage(1) // Get first page
@@ -186,7 +196,9 @@ const convertImage = async (inputPath, outputPath, conversionType) => {
       }
       case 'heic-jpg': {
         // Convert HEIC to JPG
-        await sharp(inputPath)
+        // Use first path from array
+        const heicPath = pathArray[0]
+        await sharp(heicPath)
           .jpeg({ quality: 90 })
           .toFile(outputPath)
         break
@@ -384,37 +396,76 @@ const isValidFileType = (filename, mimetype) => {
   return allowedMimes.includes(mimetype) || allowedExtensions.includes(fileExtension)
 }
 
+// Helper function to clean up uploaded files
+const cleanupFiles = (files) => {
+  files.forEach(file => {
+    if (file.path && fs.existsSync(file.path)) {
+      try {
+        fs.unlinkSync(file.path)
+      } catch (err) {
+        console.error('Error cleaning up file:', file.path, err)
+      }
+    }
+  })
+}
+
 // Conversion endpoint
 app.post('/api/convert', async (c) => {
-  let uploadedFile = null
+  let uploadedFiles = []
 
   try {
     const body = await c.req.parseBody()
-    const file = body.file
 
-    if (!file || !(file instanceof File)) {
+    // Handle both single file ('file') and multiple files ('files')
+    let file = body.file
+    const filesInput = body.files
+
+    // Determine if we have multiple files
+    let filesToProcess = []
+    if (filesInput) {
+      // Multiple files sent
+      filesToProcess = Array.isArray(filesInput) ? filesInput : [filesInput]
+    } else if (file) {
+      // Single file sent
+      filesToProcess = [file]
+    }
+
+    if (filesToProcess.length === 0) {
       return c.json({ success: false, error: 'No file uploaded' }, 400)
     }
 
-    // Validate file size (500MB limit)
-    if (file.size > 500 * 1024 * 1024) {
-      return c.json({ success: false, error: 'File too large. Maximum size is 500MB.' }, 400)
+    // Validate all files
+    for (const fileItem of filesToProcess) {
+      if (!(fileItem instanceof File)) {
+        return c.json({ success: false, error: 'Invalid file format' }, 400)
+      }
+
+      // Validate file size (500MB limit per file)
+      if (fileItem.size > 500 * 1024 * 1024) {
+        return c.json({ success: false, error: `File ${fileItem.name} is too large. Maximum size is 500MB per file.` }, 400)
+      }
+
+      // Validate file type
+      if (!isValidFileType(fileItem.name, fileItem.type)) {
+        return c.json({
+          success: false,
+          error: `Invalid file type for ${fileItem.name}. Please upload a video, audio, image, or document file.`
+        }, 400)
+      }
     }
 
-    // Validate file type
-    if (!isValidFileType(file.name, file.type)) {
-      return c.json({
-        success: false,
-        error: 'Invalid file type. Please upload a video, audio, image, or document file.'
-      }, 400)
+    // Save all uploaded files
+    for (const fileItem of filesToProcess) {
+      const savedFile = await saveUploadedFile(fileItem)
+      uploadedFiles.push(savedFile)
     }
-
-    // Save uploaded file
-    uploadedFile = await saveUploadedFile(file)
 
     const { converterId, type } = body
-    const inputPath = uploadedFile.path
-    const inputExt = path.extname(uploadedFile.originalname).toLowerCase()
+
+    // For single file conversions, use the first file path
+    // For multi-file conversions (like image-pdf), use array of paths
+    const inputPath = uploadedFiles.length === 1 ? uploadedFiles[0].path : uploadedFiles.map(f => f.path)
+    const inputExt = path.extname(uploadedFiles[0].originalname).toLowerCase()
     const uniqueId = Date.now() + '-' + Math.round(Math.random() * 1E9)
 
     let outputPath
@@ -466,7 +517,7 @@ app.post('/api/convert', async (c) => {
       case 'jpg-pdf':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertImage(inputPath, outputPath, 'jpg-pdf')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -476,7 +527,7 @@ app.post('/api/convert', async (c) => {
       case 'pdf-jpg':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
         await convertImage(inputPath, outputPath, 'pdf-jpg')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -486,7 +537,7 @@ app.post('/api/convert', async (c) => {
       case 'heic-jpg':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
         await convertImage(inputPath, outputPath, 'heic-jpg')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -496,7 +547,7 @@ app.post('/api/convert', async (c) => {
       case 'image-pdf':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertImage(inputPath, outputPath, 'image-pdf')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -512,7 +563,7 @@ app.post('/api/convert', async (c) => {
           outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
           await convertImage(inputPath, outputPath, 'image-pdf')
         }
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -523,7 +574,7 @@ app.post('/api/convert', async (c) => {
       case 'pdf-word':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.docx`)
         await convertDocument(inputPath, outputPath, 'pdf-word')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -533,7 +584,7 @@ app.post('/api/convert', async (c) => {
       case 'epub-pdf':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.pdf`)
         await convertDocument(inputPath, outputPath, 'epub-pdf')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -543,7 +594,7 @@ app.post('/api/convert', async (c) => {
       case 'epub-mobi':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.mobi`)
         await convertDocument(inputPath, outputPath, 'epub-mobi')
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -555,7 +606,7 @@ app.post('/api/convert', async (c) => {
         outputPath = path.join(convertedDir, `converted-${uniqueId}${inputExt}`)
         // For now, just copy the file
         fs.copyFileSync(inputPath, outputPath)
-        fs.unlinkSync(inputPath)
+        cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
           downloadUrl: `/converted/${path.basename(outputPath)}`,
@@ -571,8 +622,8 @@ app.post('/api/convert', async (c) => {
     await convertFile(inputPath, outputPath, options)
     console.log('Conversion completed successfully')
 
-    // Clean up input file
-    fs.unlinkSync(inputPath)
+    // Clean up input files
+    cleanupFiles(uploadedFiles)
 
     const downloadUrl = `/converted/${path.basename(outputPath)}`
     console.log('Sending response:', { downloadUrl, filename: path.basename(outputPath) })
@@ -587,13 +638,7 @@ app.post('/api/convert', async (c) => {
     console.error('Conversion error:', error)
 
     // Clean up files on error
-    if (uploadedFile && fs.existsSync(uploadedFile.path)) {
-      try {
-        fs.unlinkSync(uploadedFile.path)
-      } catch (unlinkError) {
-        console.error('Error cleaning up input file:', unlinkError)
-      }
-    }
+    cleanupFiles(uploadedFiles)
 
     // Provide more helpful error messages
     let errorMessage = 'Conversion failed. Please ensure FFmpeg is installed and the file is valid.'
