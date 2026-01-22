@@ -95,7 +95,7 @@ export const performConversion = async (file, converterId, type, onProgress) => 
       // Document conversions
       case 'pdf-word':
         outputBlob = await convertPDFToWord(file)
-        outputFilename = `converted-${Date.now()}.rtf`
+        outputFilename = `converted-${Date.now()}.docx`
         break
 
       case 'epub-pdf':

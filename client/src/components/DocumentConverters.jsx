@@ -6,7 +6,7 @@ const DocumentConverters = () => {
   const [activeConverter, setActiveConverter] = useState(null)
 
   const converters = [
-    { id: 'pdf-word', title: 'PDF to Word', description: 'Extract text from PDF to Word format (RTF)' },
+    { id: 'pdf-word', title: 'PDF to Word', description: 'Extract text from PDF to Word format (DOCX)' },
     { id: 'epub-pdf', title: 'EPUB to PDF', description: 'Convert EPUB ebooks to PDF format' },
     { id: 'epub-html', title: 'EPUB to HTML', description: 'Convert EPUB ebooks to HTML format' },
   ]

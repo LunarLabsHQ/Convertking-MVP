@@ -2,13 +2,13 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import * as pdfjsLib from 'pdfjs-dist'
 import ePub from 'epubjs'
 import { jsPDF } from 'jspdf'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 export const convertPDFToWord = async (file) => {
-  // Note: True PDF to DOCX conversion requires complex parsing
-  // This extracts text from PDF and creates an RTF file (which Word can open)
+  // Extracts text from PDF and creates a proper DOCX file using docx library
 
   try {
     const arrayBuffer = await file.arrayBuffer()
@@ -17,55 +17,114 @@ export const convertPDFToWord = async (file) => {
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
     const pdf = await loadingTask.promise
 
-    let extractedText = ''
+    const documentChildren = []
 
     // Extract text from each page
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum)
       const textContent = await page.getTextContent()
 
+      // Add page heading
+      documentChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Page ${pageNum}`,
+              bold: true,
+              size: 28,
+            })
+          ],
+          heading: HeadingLevel.HEADING_2,
+          spacing: {
+            before: 240,
+            after: 120,
+          }
+        })
+      )
+
       // Better text extraction with line break detection
-      let pageText = ''
+      const lines = []
+      let currentLine = ''
       let lastY = null
 
       textContent.items.forEach((item, index) => {
         // Check if we've moved to a new line (y coordinate changed significantly)
         if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
-          pageText += '\n'
+          if (currentLine.trim()) {
+            lines.push(currentLine.trim())
+          }
+          currentLine = ''
         }
 
-        // Add space before text if needed (except at start of line)
-        if (index > 0 && item.str.trim() && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
-          pageText += ' '
+        // Add space before text if needed
+        if (currentLine && item.str.trim() && !currentLine.endsWith(' ')) {
+          currentLine += ' '
         }
 
-        pageText += item.str
+        currentLine += item.str
         lastY = item.transform[5]
       })
 
-      extractedText += `--- Page ${pageNum} ---\n\n${pageText.trim()}\n\n`
+      // Add the last line
+      if (currentLine.trim()) {
+        lines.push(currentLine.trim())
+      }
+
+      // Add lines as paragraphs
+      if (lines.length === 0) {
+        documentChildren.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: '[No text content on this page]',
+                italics: true,
+              })
+            ]
+          })
+        )
+      } else {
+        lines.forEach(line => {
+          documentChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: line,
+                  size: 24,
+                })
+              ],
+              spacing: {
+                after: 120,
+              }
+            })
+          )
+        })
+      }
     }
 
-    if (!extractedText.trim()) {
-      extractedText = 'No text content could be extracted from this PDF.\nThe PDF may contain only images or scanned content.'
+    // If no content was extracted
+    if (documentChildren.length === 0) {
+      documentChildren.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: 'No text content could be extracted from this PDF. The PDF may contain only images or scanned content.',
+              italics: true,
+            })
+          ]
+        })
+      )
     }
 
-    // Create RTF format (Word can open this)
-    // Escape special RTF characters
-    const escapedText = extractedText
-      .replace(/\\/g, '\\\\')
-      .replace(/\{/g, '\\{')
-      .replace(/\}/g, '\\}')
-      .replace(/\n/g, '\\par\n')
+    // Create Word document
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: documentChildren,
+      }],
+    })
 
-    const rtfContent = `{\\rtf1\\ansi\\deff0
-{\\fonttbl{\\f0 Times New Roman;}}
-{\\colortbl;\\red0\\green0\\blue0;}
-\\f0\\fs24
-${escapedText}
-}`
-
-    const blob = new Blob([rtfContent], { type: 'application/rtf' })
+    // Generate DOCX file
+    const blob = await Packer.toBlob(doc)
     return blob
   } catch (error) {
     throw new Error(`PDF to Word conversion failed: ${error.message}`)
