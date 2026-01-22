@@ -415,7 +415,12 @@ app.post('/api/convert', async (c) => {
   let uploadedFiles = []
 
   try {
-    const body = await c.req.parseBody()
+    // Parse body with all option to get all files with same field name
+    const body = await c.req.parseBody({ all: true })
+
+    console.log('Received body keys:', Object.keys(body))
+    console.log('Files field:', body.files)
+    console.log('File field:', body.file)
 
     // Handle both single file ('file') and multiple files ('files')
     let file = body.file
@@ -424,12 +429,16 @@ app.post('/api/convert', async (c) => {
     // Determine if we have multiple files
     let filesToProcess = []
     if (filesInput) {
-      // Multiple files sent
+      // Multiple files sent - could be array or single file
       filesToProcess = Array.isArray(filesInput) ? filesInput : [filesInput]
+      console.log('Processing multiple files:', filesToProcess.length)
     } else if (file) {
       // Single file sent
-      filesToProcess = [file]
+      filesToProcess = Array.isArray(file) ? file : [file]
+      console.log('Processing single file')
     }
+
+    console.log('Total files to process:', filesToProcess.length)
 
     if (filesToProcess.length === 0) {
       return c.json({ success: false, error: 'No file uploaded' }, 400)
