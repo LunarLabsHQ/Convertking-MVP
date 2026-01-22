@@ -13,6 +13,7 @@ import { createCanvas } from 'canvas'
 import EPub from 'epub'
 import { JSDOM } from 'jsdom'
 import PDFParser from 'pdf2json'
+import archiver from 'archiver'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -171,28 +172,89 @@ const convertImage = async (inputPaths, outputPath, conversionType) => {
         break
       }
       case 'pdf-jpg': {
-        // Extract first page of PDF as JPG using pdf.js
+        // Extract ALL pages of PDF as JPG using pdf.js
         // Use first path from array
         const pdfPath = pathArray[0]
         const data = new Uint8Array(fs.readFileSync(pdfPath))
         const loadingTask = pdfjsLib.getDocument({ data })
         const pdfDocument = await loadingTask.promise
-        const page = await pdfDocument.getPage(1) // Get first page
+        const numPages = pdfDocument.numPages
 
-        const viewport = page.getViewport({ scale: 2.0 })
-        const canvas = createCanvas(viewport.width, viewport.height)
-        const context = canvas.getContext('2d')
+        console.log(`PDF has ${numPages} pages, converting all to JPG`)
 
-        await page.render({
-          canvasContext: context,
-          viewport: viewport
-        }).promise
+        // If only one page, return single image
+        if (numPages === 1) {
+          const page = await pdfDocument.getPage(1)
+          const viewport = page.getViewport({ scale: 2.0 })
+          const canvas = createCanvas(viewport.width, viewport.height)
+          const context = canvas.getContext('2d')
 
-        // Convert canvas to buffer and save as JPG using sharp
-        const buffer = canvas.toBuffer('image/png')
-        await sharp(buffer)
-          .jpeg({ quality: 90 })
-          .toFile(outputPath)
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise
+
+          // Convert canvas to buffer and save as JPG using sharp
+          const buffer = canvas.toBuffer('image/png')
+          await sharp(buffer)
+            .jpeg({ quality: 90 })
+            .toFile(outputPath)
+        } else {
+          // Multiple pages - create individual images and zip them
+          const imagePaths = []
+          const convertedDir = path.dirname(outputPath)
+          const baseFilename = path.basename(outputPath, path.extname(outputPath))
+
+          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdfDocument.getPage(pageNum)
+            const viewport = page.getViewport({ scale: 2.0 })
+            const canvas = createCanvas(viewport.width, viewport.height)
+            const context = canvas.getContext('2d')
+
+            await page.render({
+              canvasContext: context,
+              viewport: viewport
+            }).promise
+
+            // Save each page as separate JPG
+            const buffer = canvas.toBuffer('image/png')
+            const pagePath = path.join(convertedDir, `${baseFilename}-page-${pageNum}.jpg`)
+            await sharp(buffer)
+              .jpeg({ quality: 90 })
+              .toFile(pagePath)
+
+            imagePaths.push(pagePath)
+          }
+
+          // Create zip file with all images
+          const zipPath = outputPath.replace(/\.[^.]+$/, '.zip')
+          await new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(zipPath)
+            const archive = archiver('zip', { zlib: { level: 9 } })
+
+            output.on('close', () => {
+              console.log(`Created zip with ${archive.pointer()} bytes`)
+              // Clean up individual image files
+              imagePaths.forEach(imgPath => {
+                if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath)
+              })
+              resolve(zipPath)
+            })
+
+            archive.on('error', (err) => reject(err))
+            archive.pipe(output)
+
+            // Add each image to zip
+            imagePaths.forEach((imgPath, index) => {
+              archive.file(imgPath, { name: `page-${index + 1}.jpg` })
+            })
+
+            archive.finalize()
+          })
+
+          // Update outputPath to point to zip file for return
+          outputPath = zipPath
+        }
         break
       }
       case 'heic-jpg': {
@@ -536,12 +598,13 @@ app.post('/api/convert', async (c) => {
 
       case 'pdf-jpg':
         outputPath = path.join(convertedDir, `converted-${uniqueId}.jpg`)
-        await convertImage(inputPath, outputPath, 'pdf-jpg')
+        // convertImage will return the actual path (jpg for single page, zip for multiple pages)
+        const actualOutputPath = await convertImage(inputPath, outputPath, 'pdf-jpg')
         cleanupFiles(uploadedFiles)
         return c.json({
           success: true,
-          downloadUrl: `/converted/${path.basename(outputPath)}`,
-          filename: path.basename(outputPath)
+          downloadUrl: `/converted/${path.basename(actualOutputPath)}`,
+          filename: path.basename(actualOutputPath)
         })
 
       case 'heic-jpg':

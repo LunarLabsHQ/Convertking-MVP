@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
+    "archiver": "^7.0.1",
     "canvas": "^3.2.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
