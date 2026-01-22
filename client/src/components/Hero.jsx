@@ -6,7 +6,7 @@ const Hero = () => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.8 }}
-      className="container mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 md:py-24 lg:py-32 text-center"
+      className="container mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10 md:pt-12 lg:pt-16 pb-12 sm:pb-14 md:pb-16 lg:pb-20 text-center"
     >
       {/* Badge */}
       <motion.div
