@@ -3,6 +3,9 @@ import * as pdfjsLib from 'pdfjs-dist'
 import ePub from 'epubjs'
 import { jsPDF } from 'jspdf'
 
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
 export const convertPDFToWord = async (file) => {
   // Note: True PDF to DOCX conversion requires complex parsing
   // This extracts text from PDF and creates an RTF file (which Word can open)
@@ -21,12 +24,26 @@ export const convertPDFToWord = async (file) => {
       const page = await pdf.getPage(pageNum)
       const textContent = await page.getTextContent()
 
-      // Combine text items from the page
-      const pageText = textContent.items
-        .map(item => item.str)
-        .join(' ')
+      // Better text extraction with line break detection
+      let pageText = ''
+      let lastY = null
 
-      extractedText += `--- Page ${pageNum} ---\n\n${pageText}\n\n`
+      textContent.items.forEach((item, index) => {
+        // Check if we've moved to a new line (y coordinate changed significantly)
+        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+          pageText += '\n'
+        }
+
+        // Add space before text if needed (except at start of line)
+        if (index > 0 && item.str.trim() && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
+          pageText += ' '
+        }
+
+        pageText += item.str
+        lastY = item.transform[5]
+      })
+
+      extractedText += `--- Page ${pageNum} ---\n\n${pageText.trim()}\n\n`
     }
 
     if (!extractedText.trim()) {
