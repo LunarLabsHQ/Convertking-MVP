@@ -14,9 +14,40 @@ import EPub from 'epub'
 import { JSDOM } from 'jsdom'
 import PDFParser from 'pdf2json'
 import archiver from 'archiver'
+import { Canvas, Image } from 'canvas'
+import { pdfToPng } from 'pdf-to-png-converter'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// Node.js Canvas factory for pdfjs
+class NodeCanvasFactory {
+  create(width, height) {
+    const canvas = createCanvas(width, height)
+    const context = canvas.getContext('2d')
+    // Make Image available to context for pdfjs to use
+    context.createImageBitmap = async (image) => image
+    return {
+      canvas,
+      context
+    }
+  }
+
+  reset(canvasAndContext, width, height) {
+    canvasAndContext.canvas.width = width
+    canvasAndContext.canvas.height = height
+  }
+
+  destroy(canvasAndContext) {
+    canvasAndContext.canvas.width = 0
+    canvasAndContext.canvas.height = 0
+    canvasAndContext.canvas = null
+    canvasAndContext.context = null
+  }
+}
+
+// Canvas and Image for pdfjs
+const createImageConstructor = () => Image
 
 const app = new Hono()
 const PORT = process.env.PORT || 5000
@@ -178,68 +209,49 @@ const convertImage = async (inputPaths, outputPath, conversionType) => {
         break
       }
       case 'pdf-jpg': {
-        // Extract ALL pages of PDF as JPG using pdf.js
-        // Use first path from array
+        // Convert PDF pages to images using pdf-to-png-converter
         const pdfPath = pathArray[0]
-        const data = new Uint8Array(fs.readFileSync(pdfPath))
-        const loadingTask = pdfjsLib.getDocument({ data })
-        const pdfDocument = await loadingTask.promise
-        const numPages = pdfDocument.numPages
+        console.log('[PDF-JPG] Starting conversion for:', pdfPath)
 
-        console.log(`PDF has ${numPages} pages, converting all to JPG`)
+        // Convert PDF to PNG images
+        const pngPages = await pdfToPng(pdfPath, {
+          outputFolder: path.dirname(outputPath),
+          disableFontFace: false,
+          viewportScale: 2.0
+        })
 
-        // If only one page, return single image
-        if (numPages === 1) {
-          const page = await pdfDocument.getPage(1)
-          const viewport = page.getViewport({ scale: 2.0 })
-          const canvas = createCanvas(viewport.width, viewport.height)
-          const context = canvas.getContext('2d')
+        console.log(`[PDF-JPG] Converted ${pngPages.length} pages to PNG`)
 
-          await page.render({
-            canvasContext: context,
-            viewport: viewport
-          }).promise
+        const imagePaths = []
+        const convertedDir = path.dirname(outputPath)
+        const baseFilename = path.basename(outputPath, path.extname(outputPath))
 
-          // Convert canvas to buffer and save as JPG using sharp
-          const buffer = canvas.toBuffer('image/png')
-          await sharp(buffer)
+        // Convert PNGs to JPG
+        for (let i = 0; i < pngPages.length; i++) {
+          const page = pngPages[i]
+          const pagePath = pngPages.length === 1
+            ? outputPath
+            : path.join(convertedDir, `${baseFilename}-page-${i + 1}.jpg`)
+
+          await sharp(page.content)
             .jpeg({ quality: 90 })
-            .toFile(outputPath)
-        } else {
-          // Multiple pages - create individual images and zip them
-          const imagePaths = []
-          const convertedDir = path.dirname(outputPath)
-          const baseFilename = path.basename(outputPath, path.extname(outputPath))
+            .toFile(pagePath)
 
-          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-            const page = await pdfDocument.getPage(pageNum)
-            const viewport = page.getViewport({ scale: 2.0 })
-            const canvas = createCanvas(viewport.width, viewport.height)
-            const context = canvas.getContext('2d')
-
-            await page.render({
-              canvasContext: context,
-              viewport: viewport
-            }).promise
-
-            // Save each page as separate JPG
-            const buffer = canvas.toBuffer('image/png')
-            const pagePath = path.join(convertedDir, `${baseFilename}-page-${pageNum}.jpg`)
-            await sharp(buffer)
-              .jpeg({ quality: 90 })
-              .toFile(pagePath)
-
+          if (pngPages.length > 1) {
             imagePaths.push(pagePath)
           }
+          console.log(`[PDF-JPG] Saved page ${i + 1} as JPG`)
+        }
 
-          // Create zip file with all images
+        // If multiple pages, create zip
+        if (pngPages.length > 1) {
           const zipPath = outputPath.replace(/\.[^.]+$/, '.zip')
           await new Promise((resolve, reject) => {
             const output = fs.createWriteStream(zipPath)
             const archive = archiver('zip', { zlib: { level: 9 } })
 
             output.on('close', () => {
-              console.log(`Created zip with ${archive.pointer()} bytes`)
+              console.log(`[PDF-JPG] Created zip with ${archive.pointer()} bytes`)
               // Clean up individual image files
               imagePaths.forEach(imgPath => {
                 if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath)
@@ -258,7 +270,7 @@ const convertImage = async (inputPaths, outputPath, conversionType) => {
             archive.finalize()
           })
 
-          // Update outputPath to point to zip file for return
+          // Update outputPath to point to zip file
           outputPath = zipPath
         }
         break
